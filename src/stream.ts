@@ -1,4 +1,4 @@
-type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
+export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
 
 /**
  * A reactive streaming library that provides async-first data structures with built-in event streams.
@@ -477,4 +477,262 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       }
     });
   }
+
+  /**
+   * Applies a transformer function to this stream, enabling functional composition.
+   * 
+   * @param transformer - Function that takes a stream and returns a transformed stream
+   * @returns New stream with the transformation applied
+   * 
+   * @example
+   * ```typescript
+   * const numbers = new Stream<number>();
+   * 
+   * // Using built-in transformers
+   * const result = numbers
+   *   .pipe(filter(n => n > 0))
+   *   .pipe(map(n => n * 2))
+   *   .pipe(group(batch => batch.length >= 3));
+   * 
+   * // Custom transformer
+   * const throttle = <T>(ms: number) => (stream: Stream<T>) => 
+   *   new Stream<T>(async function* () {
+   *     let lastEmit = 0;
+   *     for await (const value of stream) {
+   *       const now = Date.now();
+   *       if (now - lastEmit >= ms) {
+   *         yield value;
+   *         lastEmit = now;
+   *       }
+   *     }
+   *   });
+   * 
+   * numbers.pipe(throttle(1000));
+   * ```
+   */
+  pipe<OUTPUT>(transformer: (stream: Stream<VALUE>) => Stream<OUTPUT>): Stream<OUTPUT> {
+    return transformer(this);
+  }
 }
+
+/**
+ * Transformer function interface for mapping stream values.
+ * Supports both simple mapping and stateful mapping with accumulators.
+ */
+export interface MapFunction {
+  <VALUE, MAPPED>(mapper: (value: VALUE) => MAPPED | Promise<MAPPED>): (stream: Stream<VALUE>) => Stream<MAPPED>;
+  <VALUE, MAPPED, ACC>(
+    initialValue: ACC,
+    mapper: (accumulator: ACC, value: VALUE) => [MAPPED, ACC] | Promise<[MAPPED, ACC]>
+  ): (stream: Stream<VALUE>) => Stream<MAPPED>;
+}
+
+/**
+ * Creates a map transformer for use with pipe().
+ * 
+ * @param mapper - Function to transform each value, or initial accumulator value
+ * @param mapper - Optional mapper function when using accumulator
+ * @returns Transformer function for pipe()
+ * 
+ * @example
+ * ```typescript
+ * const numbers = new Stream<number>();
+ * 
+ * // Simple mapping
+ * const doubled = numbers.pipe(map(n => n * 2));
+ * 
+ * // Stateful mapping (running sum)
+ * const sums = numbers.pipe(map(0, (sum, n) => [sum + n, sum + n]));
+ * 
+ * // Async mapping
+ * const enriched = numbers.pipe(map(async n => {
+ *   const data = await fetchData(n);
+ *   return { value: n, data };
+ * }));
+ * ```
+ */
+export const map: MapFunction =
+  <VALUE>(mapperOrInitial: any, mapper?: any) =>
+  (stream: Stream<VALUE>) => {
+    if (mapper) {
+      return stream.map(mapperOrInitial, mapper);
+    } else {
+      return stream.map(mapperOrInitial);
+    }
+  };
+
+/**
+ * Transformer function interface for filtering stream values.
+ * Supports type guards, boolean predicates, and stateful filtering.
+ */
+export interface FilterFunction {
+  <VALUE, FILTERED extends VALUE>(predicate: (value: VALUE) => value is FILTERED): (
+    stream: Stream<VALUE>
+  ) => Stream<FILTERED>;
+  <VALUE>(predicate: (value: VALUE) => boolean | Promise<boolean>): (stream: Stream<VALUE>) => Stream<VALUE>;
+  <VALUE, ACC>(
+    initialValue: ACC,
+    predicate: (accumulator: ACC, value: VALUE) => [boolean, ACC] | Promise<[boolean, ACC]>
+  ): (stream: Stream<VALUE>) => Stream<VALUE>;
+}
+
+/**
+ * Creates a filter transformer for use with pipe().
+ * 
+ * @param predicate - Function to test each value, or initial accumulator value
+ * @param predicate - Optional predicate function when using accumulator
+ * @returns Transformer function for pipe()
+ * 
+ * @example
+ * ```typescript
+ * const numbers = new Stream<number>();
+ * 
+ * // Simple filtering
+ * const positives = numbers.pipe(filter(n => n > 0));
+ * 
+ * // Type guard filtering
+ * const strings = mixed.pipe(filter((x): x is string => typeof x === 'string'));
+ * 
+ * // Stateful filtering (only increasing values)
+ * const increasing = numbers.pipe(filter(0, (prev, curr) => 
+ *   [curr > prev, Math.max(prev, curr)]
+ * ));
+ * ```
+ */
+export const filter: FilterFunction =
+  <VALUE>(predicateOrInitial: any, predicate?: any) =>
+  (stream: Stream<VALUE>) => {
+    if (predicate) {
+      return stream.filter(predicateOrInitial, predicate);
+    } else {
+      return stream.filter(predicateOrInitial);
+    }
+  };
+
+/**
+ * Transformer function interface for grouping stream values into batches.
+ * Supports both simple batching and stateful grouping with accumulators.
+ */
+export interface GroupFunction {
+  <VALUE>(predicate: (accumulator: VALUE[], value: VALUE) => boolean | Promise<boolean>): (
+    stream: Stream<VALUE>
+  ) => Stream<VALUE[]>;
+  <VALUE, ACC>(
+    initialValue: ACC,
+    predicate: (accumulator: ACC, value: VALUE) => [boolean, ACC] | Promise<[boolean, ACC]>
+  ): (stream: Stream<VALUE>) => Stream<ACC>;
+}
+
+/**
+ * Creates a group transformer for use with pipe().
+ * 
+ * @param predicate - Function to determine when to emit a group, or initial accumulator value
+ * @param predicate - Optional predicate function when using accumulator
+ * @returns Transformer function for pipe()
+ * 
+ * @example
+ * ```typescript
+ * const numbers = new Stream<number>();
+ * 
+ * // Group by count
+ * const batches = numbers.pipe(group(batch => batch.length >= 5));
+ * 
+ * // Group by sum
+ * const sumGroups = numbers.pipe(group(0, (sum, n) => 
+ *   sum + n >= 100 ? [true, 0] : [false, sum + n]
+ * ));
+ * 
+ * // Time-based grouping
+ * const timeGroups = events.pipe(group([], (window, event) => {
+ *   const now = Date.now();
+ *   const recent = window.filter(e => now - e.timestamp < 5000);
+ *   return [recent.length >= 10, [...recent, event]];
+ * }));
+ * ```
+ */
+export const group: GroupFunction =
+  <VALUE>(predicateOrInitial: any, predicate?: any) =>
+  (stream: Stream<VALUE>) => {
+    if (predicate) {
+      return stream.group(predicateOrInitial, predicate);
+    } else {
+      return stream.group(predicateOrInitial);
+    }
+  };
+
+/**
+ * Transformer function interface for merging multiple streams.
+ * Combines values from all streams into a single output stream.
+ */
+export interface MergeFunction {
+  <STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS): <VALUE>(
+    stream: Stream<VALUE>
+  ) => Stream<VALUE | ValueOf<STREAMS[number]>>;
+}
+
+/**
+ * Creates a merge transformer for use with pipe().
+ * 
+ * @param streams - Additional streams to merge with the source stream
+ * @returns Transformer function for pipe()
+ * 
+ * @example
+ * ```typescript
+ * const stream1 = new Stream<string>();
+ * const stream2 = new Stream<number>();
+ * const stream3 = new Stream<boolean>();
+ * 
+ * // Merge multiple streams
+ * const merged = stream1.pipe(merge(stream2, stream3));
+ * // Type: Stream<string | number | boolean>
+ * 
+ * merged.listen(value => {
+ *   console.log('Received:', value); // Could be string, number, or boolean
+ * });
+ * 
+ * stream1.push('hello');
+ * stream2.push(42);
+ * stream3.push(true);
+ * ```
+ */
+export const merge: MergeFunction =
+  <STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS) =>
+  <VALUE>(stream: Stream<VALUE>) =>
+    stream.merge(...streams);
+
+/**
+ * Transformer function interface for flattening array values in streams.
+ * Supports configurable depth for nested array flattening.
+ */
+export interface FlatFunction {
+  (): <VALUE>(stream: Stream<VALUE>) => Stream<FlatArray<VALUE, 0>>;
+  <DEPTH extends number>(depth: DEPTH): <VALUE>(stream: Stream<VALUE>) => Stream<FlatArray<VALUE, DEPTH>>;
+}
+
+/**
+ * Creates a flat transformer for use with pipe().
+ * 
+ * @param depth - Optional depth to flatten (default: 0 for single level)
+ * @returns Transformer function for pipe()
+ * 
+ * @example
+ * ```typescript
+ * const arrays = new Stream<number[]>();
+ * 
+ * // Flatten single level
+ * const flattened = arrays.pipe(flat());
+ * arrays.push([1, 2], [3, 4]); // Emits: 1, 2, 3, 4
+ * 
+ * // Flatten multiple levels
+ * const nested = new Stream<number[][][]>();
+ * const deepFlat = nested.pipe(flat(2));
+ * nested.push([[[1, 2]], [[3, 4]]]); // Emits: 1, 2, 3, 4
+ * 
+ * // Mixed content (non-arrays pass through)
+ * const mixed = new Stream<number | number[]>();
+ * const result = mixed.pipe(flat());
+ * mixed.push(1, [2, 3], 4); // Emits: 1, 2, 3, 4
+ * ```
+ */
+export const flat: FlatFunction = ((depth?: any) => (stream: Stream<any>) =>
+  depth !== undefined ? stream.flat(depth) : stream.flat()) as FlatFunction;
