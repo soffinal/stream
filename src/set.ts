@@ -1,4 +1,4 @@
-import { Stream } from "./stream";
+import { Stream } from "./stream.ts";
 
 /**
  * A reactive Set that extends the native Set with stream-based mutation events.
@@ -98,7 +98,7 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
     const self = this;
 
     this.add = new Proxy(
-      (value: VALUE) => {
+      (value: VALUE): this => {
         if (globalThis.Set.prototype.has.call(self, value)) return self;
         globalThis.Set.prototype.add.call(self, value);
         self._addStream?.push(value);
@@ -114,7 +114,7 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
     ) as any;
 
     this.delete = new Proxy(
-      (value: VALUE) => {
+      (value: VALUE): boolean => {
         if (!globalThis.Set.prototype.has.call(self, value)) return false;
         globalThis.Set.prototype.delete.call(self, value);
         self._deleteStream?.push(value);
@@ -130,7 +130,7 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
     ) as any;
 
     this.clear = new Proxy(
-      () => {
+      (): void => {
         if (self.size > 0) {
           globalThis.Set.prototype.clear.call(self);
           self._clearStream?.push();

@@ -1,4 +1,4 @@
-import { Stream } from "./stream";
+import { Stream } from "./stream.ts";
 
 /**
  * A reactive List that provides array-like functionality with stream-based mutation events.
@@ -112,7 +112,7 @@ export class List<VALUE> implements Iterable<VALUE> {
     }
 
     this.insert = new Proxy(
-      (index: number, value: VALUE) => {
+      (index: number, value: VALUE): this => {
         const actualIndex =
           index < 0 ? Math.max(0, self._items.length + index + 1) : Math.min(index, self._items.length);
         self._items.splice(actualIndex, 0, value);
@@ -128,7 +128,7 @@ export class List<VALUE> implements Iterable<VALUE> {
       }
     ) as any;
     this.delete = new Proxy(
-      (index: number) => {
+      (index: number): VALUE | undefined => {
         if (index < 0 || index >= self._items.length) return undefined;
         const value = self._items.splice(index, 1)[0]!;
         self._deleteStream?.push([index, value]);
@@ -144,7 +144,7 @@ export class List<VALUE> implements Iterable<VALUE> {
     ) as any;
 
     this.clear = new Proxy(
-      () => {
+      (): void => {
         if (self._items.length > 0) {
           self._items.length = 0;
           self._clearStream?.push();
@@ -241,7 +241,7 @@ export class List<VALUE> implements Iterable<VALUE> {
    * }
    * ```
    */
-  values() {
+  values(): IterableIterator<VALUE> {
     return this._items[Symbol.iterator]();
   }
   /**
@@ -257,7 +257,7 @@ export class List<VALUE> implements Iterable<VALUE> {
    * const array = [...list]; // ['a', 'b', 'c']
    * ```
    */
-  [Symbol.iterator]() {
+  [Symbol.iterator](): IterableIterator<VALUE> {
     return this._items[Symbol.iterator]();
   }
 }

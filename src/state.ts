@@ -1,4 +1,4 @@
-import { Stream } from "./stream";
+import { Stream } from "./stream.ts";
 
 /**
  * A reactive state container that extends Stream to provide stateful value management.
@@ -68,7 +68,7 @@ export class State<VALUE> extends Stream<VALUE> {
    * console.log(state.value); // 'hello'
    * ```
    */
-  get value() {
+  get value(): VALUE {
     return this._value;
   }
   /**
@@ -85,7 +85,7 @@ export class State<VALUE> extends Stream<VALUE> {
    * state.value = 100; // New value: 100
    * ```
    */
-  set value(value) {
+  set value(value: VALUE) {
     this._value = value;
     super.push(value);
   }

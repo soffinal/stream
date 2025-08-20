@@ -1,4 +1,4 @@
-import { Stream } from "./stream";
+import { Stream } from "./stream.ts";
 
 /**
  * A reactive Map that extends the native Map with stream-based mutation events.
@@ -103,7 +103,7 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
     const self = this;
 
     this.set = new Proxy(
-      (key: KEY, value: VALUE) => {
+      (key: KEY, value: VALUE): this => {
         if (globalThis.Map.prototype.has.call(self, key) && globalThis.Map.prototype.get.call(self, key) === value)
           return self;
         globalThis.Map.prototype.set.call(self, key, value);
@@ -120,7 +120,7 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
     ) as any;
 
     this.delete = new Proxy(
-      (key: KEY) => {
+      (key: KEY): boolean => {
         if (!globalThis.Map.prototype.has.call(self, key)) return false;
         const value = globalThis.Map.prototype.get.call(self, key);
         globalThis.Map.prototype.delete.call(self, key);
@@ -137,7 +137,7 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
     ) as any;
 
     this.clear = new Proxy(
-      () => {
+      (): void => {
         if (self.size > 0) {
           globalThis.Map.prototype.clear.call(self);
           self._clearStream?.push();

@@ -1,5 +1,13 @@
 export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
 
+// FlatArray type for flattening operations
+export type FlatArray<Arr, Depth extends number> = {
+  "done": Arr,
+  "recur": Arr extends ReadonlyArray<infer InnerArr>
+    ? FlatArray<InnerArr, [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20][Depth]>
+    : Arr
+}[Depth extends -1 ? "done" : "recur"];
+
 /**
  * A reactive streaming library that provides async-first data structures with built-in event streams.
  *
@@ -29,7 +37,7 @@ export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never
  * ```
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
-  protected _listeners = new Set<(value: VALUE) => void>();
+  protected _listeners: Set<(value: VALUE) => void> = new Set<(value: VALUE) => void>();
   protected _generatorFn: (() => AsyncGenerator<VALUE, void>) | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
@@ -86,7 +94,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * console.log(stream.hasListeners); // false
    * ```
    */
-  get hasListeners() {
+  get hasListeners(): boolean {
     return this._listeners.size > 0;
   }
   /**
@@ -100,7 +108,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * stream.listen(value => console.log(value)); // Triggers 'Listener added'
    * ```
    */
-  get listenerAdded() {
+  get listenerAdded(): Stream<void> {
     if (!this._listenerAdded) this._listenerAdded = new Stream<void>();
     return this._listenerAdded;
   }
@@ -116,7 +124,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * cleanup(); // Triggers 'Listener removed'
    * ```
    */
-  get listenerRemoved() {
+  get listenerRemoved(): Stream<void> {
     if (!this._listenerRemoved) this._listenerRemoved = new Stream<void>();
     return this._listenerRemoved;
   }
@@ -156,7 +164,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * stream.push(2, 3, 4); // Received: 2, Received: 3, Received: 4
    * ```
    */
-  push(value: VALUE, ...values: VALUE[]) {
+  push(value: VALUE, ...values: VALUE[]): void {
     values.unshift(value);
     for (const value of values) {
       for (const listener of this._listeners) {
@@ -206,7 +214,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       })();
     }
     return abort;
-    function abort() {
+    function abort(): void {
       self._listeners.delete(listener);
       self._listenerRemoved?.push();
       if (self._listeners.size === 0) {
@@ -411,7 +419,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       let resolver: Function;
       let activeStreams = streams.length + 1;
 
-      async function consume(_generator: AsyncGenerator<any, void>) {
+      async function consume(_generator: AsyncGenerator<any, void>): Promise<void> {
         try {
           for await (const value of _generator) {
             queue.push(value);
@@ -480,22 +488,22 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
 
   /**
    * Applies a transformer function to this stream, enabling functional composition.
-   * 
+   *
    * @param transformer - Function that takes a stream and returns a transformed stream
    * @returns New stream with the transformation applied
-   * 
+   *
    * @example
    * ```typescript
    * const numbers = new Stream<number>();
-   * 
+   *
    * // Using built-in transformers
    * const result = numbers
    *   .pipe(filter(n => n > 0))
    *   .pipe(map(n => n * 2))
    *   .pipe(group(batch => batch.length >= 3));
-   * 
+   *
    * // Custom transformer
-   * const throttle = <T>(ms: number) => (stream: Stream<T>) => 
+   * const throttle = <T>(ms: number) => (stream: Stream<T>) =>
    *   new Stream<T>(async function* () {
    *     let lastEmit = 0;
    *     for await (const value of stream) {
@@ -506,7 +514,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    *       }
    *     }
    *   });
-   * 
+   *
    * numbers.pipe(throttle(1000));
    * ```
    */
@@ -529,21 +537,21 @@ export interface MapFunction {
 
 /**
  * Creates a map transformer for use with pipe().
- * 
+ *
  * @param mapper - Function to transform each value, or initial accumulator value
  * @param mapper - Optional mapper function when using accumulator
  * @returns Transformer function for pipe()
- * 
+ *
  * @example
  * ```typescript
  * const numbers = new Stream<number>();
- * 
+ *
  * // Simple mapping
  * const doubled = numbers.pipe(map(n => n * 2));
- * 
+ *
  * // Stateful mapping (running sum)
  * const sums = numbers.pipe(map(0, (sum, n) => [sum + n, sum + n]));
- * 
+ *
  * // Async mapping
  * const enriched = numbers.pipe(map(async n => {
  *   const data = await fetchData(n);
@@ -552,8 +560,8 @@ export interface MapFunction {
  * ```
  */
 export const map: MapFunction =
-  <VALUE>(mapperOrInitial: any, mapper?: any) =>
-  (stream: Stream<VALUE>) => {
+  <VALUE>(mapperOrInitial: any, mapper?: any): ((stream: Stream<VALUE>) => Stream<any>) =>
+  (stream: Stream<VALUE>): Stream<any> => {
     if (mapper) {
       return stream.map(mapperOrInitial, mapper);
     } else {
@@ -578,30 +586,30 @@ export interface FilterFunction {
 
 /**
  * Creates a filter transformer for use with pipe().
- * 
+ *
  * @param predicate - Function to test each value, or initial accumulator value
  * @param predicate - Optional predicate function when using accumulator
  * @returns Transformer function for pipe()
- * 
+ *
  * @example
  * ```typescript
  * const numbers = new Stream<number>();
- * 
+ *
  * // Simple filtering
  * const positives = numbers.pipe(filter(n => n > 0));
- * 
+ *
  * // Type guard filtering
  * const strings = mixed.pipe(filter((x): x is string => typeof x === 'string'));
- * 
+ *
  * // Stateful filtering (only increasing values)
- * const increasing = numbers.pipe(filter(0, (prev, curr) => 
+ * const increasing = numbers.pipe(filter(0, (prev, curr) =>
  *   [curr > prev, Math.max(prev, curr)]
  * ));
  * ```
  */
 export const filter: FilterFunction =
-  <VALUE>(predicateOrInitial: any, predicate?: any) =>
-  (stream: Stream<VALUE>) => {
+  <VALUE>(predicateOrInitial: any, predicate?: any): ((stream: Stream<VALUE>) => Stream<any>) =>
+  (stream: Stream<VALUE>): Stream<any> => {
     if (predicate) {
       return stream.filter(predicateOrInitial, predicate);
     } else {
@@ -625,23 +633,23 @@ export interface GroupFunction {
 
 /**
  * Creates a group transformer for use with pipe().
- * 
+ *
  * @param predicate - Function to determine when to emit a group, or initial accumulator value
  * @param predicate - Optional predicate function when using accumulator
  * @returns Transformer function for pipe()
- * 
+ *
  * @example
  * ```typescript
  * const numbers = new Stream<number>();
- * 
+ *
  * // Group by count
  * const batches = numbers.pipe(group(batch => batch.length >= 5));
- * 
+ *
  * // Group by sum
- * const sumGroups = numbers.pipe(group(0, (sum, n) => 
+ * const sumGroups = numbers.pipe(group(0, (sum, n) =>
  *   sum + n >= 100 ? [true, 0] : [false, sum + n]
  * ));
- * 
+ *
  * // Time-based grouping
  * const timeGroups = events.pipe(group([], (window, event) => {
  *   const now = Date.now();
@@ -651,8 +659,8 @@ export interface GroupFunction {
  * ```
  */
 export const group: GroupFunction =
-  <VALUE>(predicateOrInitial: any, predicate?: any) =>
-  (stream: Stream<VALUE>) => {
+  <VALUE>(predicateOrInitial: any, predicate?: any): ((stream: Stream<VALUE>) => Stream<any>) =>
+  (stream: Stream<VALUE>): Stream<any> => {
     if (predicate) {
       return stream.group(predicateOrInitial, predicate);
     } else {
@@ -672,32 +680,32 @@ export interface MergeFunction {
 
 /**
  * Creates a merge transformer for use with pipe().
- * 
+ *
  * @param streams - Additional streams to merge with the source stream
  * @returns Transformer function for pipe()
- * 
+ *
  * @example
  * ```typescript
  * const stream1 = new Stream<string>();
  * const stream2 = new Stream<number>();
  * const stream3 = new Stream<boolean>();
- * 
+ *
  * // Merge multiple streams
  * const merged = stream1.pipe(merge(stream2, stream3));
  * // Type: Stream<string | number | boolean>
- * 
+ *
  * merged.listen(value => {
  *   console.log('Received:', value); // Could be string, number, or boolean
  * });
- * 
+ *
  * stream1.push('hello');
  * stream2.push(42);
  * stream3.push(true);
  * ```
  */
 export const merge: MergeFunction =
-  <STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS) =>
-  <VALUE>(stream: Stream<VALUE>) =>
+  <STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS): (<VALUE>(stream: Stream<VALUE>) => Stream<VALUE | ValueOf<STREAMS[number]>>) =>
+  <VALUE>(stream: Stream<VALUE>): Stream<VALUE | ValueOf<STREAMS[number]>> =>
     stream.merge(...streams);
 
 /**
@@ -711,28 +719,28 @@ export interface FlatFunction {
 
 /**
  * Creates a flat transformer for use with pipe().
- * 
+ *
  * @param depth - Optional depth to flatten (default: 0 for single level)
  * @returns Transformer function for pipe()
- * 
+ *
  * @example
  * ```typescript
  * const arrays = new Stream<number[]>();
- * 
+ *
  * // Flatten single level
  * const flattened = arrays.pipe(flat());
  * arrays.push([1, 2], [3, 4]); // Emits: 1, 2, 3, 4
- * 
+ *
  * // Flatten multiple levels
  * const nested = new Stream<number[][][]>();
  * const deepFlat = nested.pipe(flat(2));
  * nested.push([[[1, 2]], [[3, 4]]]); // Emits: 1, 2, 3, 4
- * 
+ *
  * // Mixed content (non-arrays pass through)
  * const mixed = new Stream<number | number[]>();
  * const result = mixed.pipe(flat());
  * mixed.push(1, [2, 3], 4); // Emits: 1, 2, 3, 4
  * ```
  */
-export const flat: FlatFunction = ((depth?: any) => (stream: Stream<any>) =>
+export const flat: FlatFunction = ((depth?: any): (<VALUE>(stream: Stream<VALUE>) => Stream<any>) => (stream: Stream<any>): Stream<any> =>
   depth !== undefined ? stream.flat(depth) : stream.flat()) as FlatFunction;
