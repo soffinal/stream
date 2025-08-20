@@ -670,12 +670,46 @@ setTimeout(cleanup, 5000);
 
 ## Installation
 
+# bun
+
 ```bash
 bun add @soffinal/stream
+# or from JSR
+bunx jsr add @soffinal/stream
 ```
+
+# Deno
+
+```bash
+deno add npm:@soffinal/stream
+# or from JSR
+deno add jsr:@soffinal/stream
+
+```
+
+# npm
 
 ```bash
 npm install @soffinal/stream
+# or from JSR
+npx jsr add @soffinal/stream
+```
+
+# pnpm
+
+```bash
+pnpm install @soffinal/stream
+# or from JSR
+pnpm install jsr:@soffinal/stream
+
+```
+
+# yarn
+
+```bash
+yarn add @soffinal/stream
+yarn add jsr:@soffinal/stream
+
 ```
 
 ## API Reference
