@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { Stream } from "./stream";
+import { Stream, map, filter, group, merge, flat } from "./stream";
 
 describe("Stream", () => {
   describe("Constructor", () => {
@@ -408,6 +408,237 @@ describe("Stream", () => {
       expect(values).toHaveLength(1500);
       expect(values[0]).toBe(0);
       expect(values[1499]).toBe(1499);
+    });
+  });
+
+  describe("Pipe Method", () => {
+    test("applies transformer function", async () => {
+      const stream = new Stream<number>();
+      const doubled = stream.pipe((s) => s.map((x) => x * 2));
+
+      const values: number[] = [];
+      doubled.listen((value) => values.push(value));
+
+      stream.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values).toEqual([2, 4, 6]);
+    });
+
+    test("chains multiple transformations", async () => {
+      const stream = new Stream<number>();
+      const result = stream
+        .pipe((s) => s.filter((x) => x > 0))
+        .pipe((s) => s.map((x) => x * 2))
+        .pipe((s) => s.filter((x) => x < 10));
+
+      const values: number[] = [];
+      result.listen((value) => values.push(value));
+
+      stream.push(-1, 1, 2, 3, 5, 6);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values).toEqual([2, 4, 6]);
+    });
+  });
+
+  describe("Functional Transformers", () => {
+    describe("map transformer", () => {
+      test("simple mapping", async () => {
+        const stream = new Stream<number>();
+        const doubled = stream.pipe(map((x) => x * 2));
+
+        const values: number[] = [];
+        doubled.listen((value) => values.push(value));
+
+        stream.push(1, 2, 3);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([2, 4, 6]);
+      });
+
+      test("stateful mapping", async () => {
+        const stream = new Stream<number>();
+        const sums = stream.pipe(map(0, (sum, n) => [sum + n, sum + n]));
+
+        const values: number[] = [];
+        sums.listen((value) => values.push(value));
+
+        stream.push(1, 2, 3);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([1, 3, 6]);
+      });
+
+      test("async mapping", async () => {
+        const stream = new Stream<number>();
+        const strings = stream.pipe(
+          map(async (x) => {
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            return x.toString();
+          })
+        );
+
+        const values: string[] = [];
+        strings.listen((value) => values.push(value));
+
+        stream.push(1, 2);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(values).toEqual(["1", "2"]);
+      });
+    });
+
+    describe("filter transformer", () => {
+      test("simple filtering", async () => {
+        const stream = new Stream<number>();
+        const positives = stream.pipe(filter((x) => x > 0));
+
+        const values: number[] = [];
+        positives.listen((value) => values.push(value));
+
+        stream.push(-1, 0, 1, 2);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([1, 2]);
+      });
+
+      test("stateful filtering", async () => {
+        const stream = new Stream<number>();
+        const increasing = stream.pipe(filter(0, (prev, curr) => [curr > prev, Math.max(prev, curr)]));
+
+        const values: number[] = [];
+        increasing.listen((value) => values.push(value));
+
+        stream.push(1, 3, 2, 5, 4);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([1, 3, 5]);
+      });
+    });
+
+    describe("group transformer", () => {
+      test("group by count", async () => {
+        const stream = new Stream<number>();
+        const batches = stream.pipe(group((batch) => batch.length >= 2));
+
+        const values: number[][] = [];
+        batches.listen((value) => values.push(value));
+
+        stream.push(1, 2, 3, 4, 5);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([
+          [1, 2],
+          [3, 4],
+        ]);
+      });
+
+      test("stateful grouping", async () => {
+        const stream = new Stream<number>();
+        const sumGroups = stream.pipe(group(0, (sum, n) => (sum + n >= 5 ? [true, 0] : [false, sum + n])));
+
+        const values: number[] = [];
+        sumGroups.listen((value) => values.push(value));
+
+        stream.push(1, 2, 3, 1, 4);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([3, 1]);
+      });
+    });
+
+    describe("merge transformer", () => {
+      test("merges multiple streams", async () => {
+        const stream1 = new Stream<string>();
+        const stream2 = new Stream<number>();
+        const merged = stream1.pipe(merge(stream2));
+
+        const values: (string | number)[] = [];
+        merged.listen((value) => values.push(value));
+
+        stream1.push("a");
+        stream2.push(1);
+        stream1.push("b");
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values.sort()).toEqual([1, "a", "b"]);
+      });
+    });
+
+    describe("flat transformer", () => {
+      test("flattens arrays", async () => {
+        const stream = new Stream<number[]>();
+        const flattened = stream.pipe(flat());
+
+        const values: number[] = [];
+        flattened.listen((value) => values.push(value));
+
+        stream.push([1, 2], [3, 4]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([1, 2, 3, 4]);
+      });
+
+      test("flattens with depth", async () => {
+        const stream = new Stream<number[][][]>();
+        const flattened = stream.pipe(flat(2));
+
+        const values: number[] = [];
+        flattened.listen((value) => values.push(value));
+
+        stream.push([[[1, 2]], [[3, 4]]]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(values).toEqual([1, 2, 3, 4]);
+      });
+    });
+  });
+
+  describe("Functional Composition", () => {
+    test("complex pipeline with all transformers", async () => {
+      const stream = new Stream<number>();
+
+      const result = stream
+        .pipe(filter((x) => x > 0)) // Remove negatives -> 1,2,3
+        .pipe(map((x) => [x, x * 2])) // Create pairs -> [1,2],[2,4],[3,6]
+        .pipe(flat()) // Flatten pairs -> 1,2,2,4,3,6
+        .pipe(group((batch) => batch.length >= 4)) // Group by 4 -> [1,2,2,4]
+        .pipe(map((batch) => batch.reduce((a, b) => a + b, 0))); // Sum each group -> 9
+
+      const values: number[] = [];
+      result.listen((value) => values.push(value));
+
+      stream.push(-1, 1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      console.log(values);
+
+      expect(values).toEqual([9]); // [1, 2, 2, 4] -> sum = 9
+    });
+
+    test("reusable transformation pipeline", async () => {
+      const processNumbers = (stream: Stream<number>) => stream.pipe(filter((x) => x > 0)).pipe(map((x) => x * 2));
+
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+
+      const result1 = stream1.pipe(processNumbers);
+      const result2 = stream2.pipe(processNumbers);
+
+      const values1: number[] = [];
+      const values2: number[] = [];
+
+      result1.listen((value) => values1.push(value));
+      result2.listen((value) => values2.push(value));
+
+      stream1.push(-1, 1, 2);
+      stream2.push(0, 3, 4);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values1).toEqual([2, 4]);
+      expect(values2).toEqual([6, 8]);
     });
   });
 });
