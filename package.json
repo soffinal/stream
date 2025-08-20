@@ -11,10 +11,9 @@
     "typescript": "^5.9.2"
   },
   "scripts": {
-    "build": "tsc",
     "clean": "rm -rf dist",
-    "prepublishOnly": "bun run clean && bun run build",
-    "test": "bun test",
+    "build": "bun run clean && bun build src/index.ts --outdir dist --target node --format esm --sourcemap --minify && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --allowImportingTsExtensions --noEmit false",
     "release": " git add . && git commit -m \"Release v$(node -p 'require(\"./package.json\").version')\" && git tag v$(node -p 'require(\"./package.json\").version')"
   },
   "exports": {
