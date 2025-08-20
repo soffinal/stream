@@ -29,6 +29,7 @@ A modern, async-first streaming library that treats asynchronous data flow as a 
 - 🔄 **Multicast by Default** - One stream, many consumers
 - ⏳ **Awaitable Streams** - `await stream` for next value
 - 🔁 **Async Iterable** - Use `for await` loops naturally
+- ⚡ **Async Operations** - All transformers support async functions while maintaining order
 - 🧠 **Smart Caching** - Operations run once, results shared
 - 🗑️ **Auto Cleanup** - Memory management handled automatically
 - 🔧 **Dual Programming Paradigms** - Method chaining or functional pipe composition
@@ -130,6 +131,17 @@ const result = stream
   .map((x) => x * 2)
   .group((batch) => batch.length >= 5);
 
+// Async operations with order preservation
+const asyncProcessed = stream
+  .filter(async (value) => {
+    const isValid = await validateAsync(value);
+    return isValid;
+  })
+  .map(async (value) => {
+    const enriched = await enrichWithExternalData(value);
+    return { original: value, enriched };
+  });
+
 // Stateful operations with initial state
 const stateful = stream
   .filter(0, (prev, curr) => [curr > prev, Math.max(prev, curr)]) // Only increasing values
@@ -151,6 +163,12 @@ const result = stream
   .pipe(filter((x) => x > 0))
   .pipe(map((x) => x * 2))
   .pipe(group((batch) => batch.length >= 5));
+
+// Async functional transformers (order preserved)
+const asyncPipeline = stream
+  .pipe(filter(async (x) => await isValidAsync(x)))
+  .pipe(map(async (x) => await processAsync(x)))
+  .pipe(group(batch => batch.length >= 5));
 
 // Stateful functional transformers
 const advanced = stream
@@ -266,13 +284,17 @@ activeUsers.add.listen((userId) => showOnlineStatus(userId));
 #### Methods
 
 - `push(...values: T[]): void` - Emit values to all listeners
-- `listen(callback: (value: T) => void, signal?: AbortSignal): () => void` - Add listener
-- `filter(predicate: (value: T) => boolean): Stream<T>` - Filter values
-- `map<U>(mapper: (value: T) => U): Stream<U>` - Transform values
-- `merge(...streams: Stream<T>[]): Stream<T>` - Combine streams
-- `group(predicate: (batch: T[]) => boolean): Stream<T[]>` - Batch values
-- `flat(depth?: number): Stream<U>` - Flatten arrays
-- `pipe<U>(transformer: (stream: Stream<T>) => Stream<U>): Stream<U>` - Apply transformer
+- `listen(callback: (value: T) => void, signal?: AbortSignal): () => void` - Add listener, returns cleanup function
+- `filter<U extends T>(predicate: (value: T) => value is U): Stream<U>` - Filter with type guard
+- `filter(predicate: (value: T) => boolean | Promise<boolean>): Stream<T>` - Filter with async predicate
+- `filter<S>(initialState: S, accumulator: (state: S, value: T) => [boolean, S] | Promise<[boolean, S]>): Stream<T>` - Stateful filtering
+- `map<U>(mapper: (value: T) => U | Promise<U>): Stream<U>` - Transform with async mapper
+- `map<S, U>(initialState: S, accumulator: (state: S, value: T) => [U, S] | Promise<[U, S]>): Stream<U>` - Stateful mapping
+- `group(predicate: (batch: T[]) => boolean | Promise<boolean>): Stream<T[]>` - Group into batches
+- `group<S>(initialState: S, accumulator: (state: S, value: T) => [boolean, S] | Promise<[boolean, S]>): Stream<S>` - Stateful grouping
+- `merge<STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS): Stream<T | ValueOf<STREAMS[number]>>` - Merge multiple streams
+- `flat<DEPTH extends number = 0>(depth?: DEPTH): Stream<FlatArray<T, DEPTH>>` - Flatten arrays with configurable depth
+- `pipe<U>(transformer: (stream: Stream<T>) => Stream<U>): Stream<U>` - Apply functional transformer
 
 #### Async Interface
 
@@ -287,13 +309,27 @@ activeUsers.add.listen((userId) => showOnlineStatus(userId));
 
 ### Transformer Functions
 
-Functional transformers for use with `pipe()`:
+Functional transformers for use with `pipe()` - all support async operations:
 
-- `filter<T>(predicate: (value: T) => boolean): (stream: Stream<T>) => Stream<T>`
-- `map<T, U>(mapper: (value: T) => U): (stream: Stream<T>) => Stream<U>`
-- `group<T>(predicate: (batch: T[]) => boolean): (stream: Stream<T>) => Stream<T[]>`
-- `merge<T>(...streams: Stream<T>[]): (stream: Stream<T>) => Stream<T>`
-- `flat<T>(depth?: number): (stream: Stream<T>) => Stream<U>`
+#### filter
+- `filter<T, U extends T>(predicate: (value: T) => value is U): (stream: Stream<T>) => Stream<U>`
+- `filter<T>(predicate: (value: T) => boolean | Promise<boolean>): (stream: Stream<T>) => Stream<T>`
+- `filter<T, S>(initialState: S, accumulator: (state: S, value: T) => [boolean, S] | Promise<[boolean, S]>): (stream: Stream<T>) => Stream<T>`
+
+#### map
+- `map<T, U>(mapper: (value: T) => U | Promise<U>): (stream: Stream<T>) => Stream<U>`
+- `map<T, S, U>(initialState: S, accumulator: (state: S, value: T) => [U, S] | Promise<[U, S]>): (stream: Stream<T>) => Stream<U>`
+
+#### group
+- `group<T>(predicate: (batch: T[]) => boolean | Promise<boolean>): (stream: Stream<T>) => Stream<T[]>`
+- `group<T, S>(initialState: S, accumulator: (state: S, value: T) => [boolean, S] | Promise<[boolean, S]>): (stream: Stream<T>) => Stream<S>`
+
+#### merge
+- `merge<STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS): <T>(stream: Stream<T>) => Stream<T | ValueOf<STREAMS[number]>>`
+
+#### flat
+- `flat(): <T>(stream: Stream<T>) => Stream<FlatArray<T, 0>>`
+- `flat<DEPTH extends number>(depth: DEPTH): <T>(stream: Stream<T>) => Stream<FlatArray<T, DEPTH>>`
 
 ### Reactive Collections
 
