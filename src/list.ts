@@ -4,7 +4,6 @@ import { Stream } from "./stream";
  * A reactive List that provides array-like functionality with stream-based mutation events.
  * Emits events when items are inserted, deleted, or the list is cleared.
  * Supports negative indexing with modulo wrapping.
- *
  * @template VALUE - The type of values stored in the list
  *
  * @example
