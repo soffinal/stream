@@ -375,7 +375,7 @@ describe("Map", () => {
       map.set("b", 2);
       map.set("c", 3);
 
-      const entries = [];
+      const entries: [string, any][] = [];
       for (const entry of map) {
         entries.push(entry);
       }

@@ -1,4 +1,4 @@
-import { Stream } from "./stream.ts";
+import { Stream } from "../stream.ts";
 
 /**
  * A reactive List that provides array-like functionality with stream-based mutation events.

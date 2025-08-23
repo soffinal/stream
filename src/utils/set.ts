@@ -1,4 +1,4 @@
-import { Stream } from "./stream.ts";
+import { Stream } from "../stream.ts";
 
 /**
  * A reactive Set that extends the native Set with stream-based mutation events.

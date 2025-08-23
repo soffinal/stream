@@ -1,4 +1,4 @@
-import { Stream } from "./stream.ts";
+import { Stream } from "../stream.ts";
 
 /**
  * A reactive Map that extends the native Map with stream-based mutation events.

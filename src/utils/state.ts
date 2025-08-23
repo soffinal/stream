@@ -1,4 +1,4 @@
-import { Stream } from "./stream.ts";
+import { Stream } from "../stream.ts";
 
 /**
  * A reactive state container that extends Stream to provide stateful value management.

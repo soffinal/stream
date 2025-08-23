@@ -335,7 +335,7 @@ describe("Set", () => {
       set.add(2);
       set.add(3);
 
-      const values = [];
+      const values: number[] = [];
       for (const value of set) {
         values.push(value);
       }

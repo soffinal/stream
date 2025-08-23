@@ -409,6 +409,16 @@ unreadCount.listen((count) => {
 });
 ```
 
+### Interactive Demo
+
+**🚀 [Live Demo on StackBlitz](https://stackblitz.com/edit/soffinal-stream?file=src%2Fmain.ts)**
+
+Explore the library's capabilities with JSONPlaceholder API integration, showcasing:
+- Async operations with order preservation
+- Chainable transformations
+- Reactive state management
+- Real-time data processing
+
 ### Browser Counter Example
 
 ```html
