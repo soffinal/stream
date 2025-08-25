@@ -114,54 +114,6 @@ describe("State", () => {
   });
 
   describe("inheritance from Stream", () => {
-    it("should support filter operation", async () => {
-      const filtered = state.filter((x) => x > 5);
-      const values: number[] = [];
-
-      const iterator = filtered[Symbol.asyncIterator]();
-      (async () => {
-        for await (const value of iterator) {
-          values.push(value);
-          if (values.length === 2) break;
-        }
-      })();
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      state.value = 3; // filtered out
-      state.value = 7; // included
-      state.value = 2; // filtered out
-      state.value = 10; // included
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(values).toEqual([7, 10]);
-      await iterator.return();
-    });
-
-    it("should support map operation", async () => {
-      const mapped = state.map((x) => x * 2);
-      const values: number[] = [];
-
-      const iterator = mapped[Symbol.asyncIterator]();
-      (async () => {
-        for await (const value of iterator) {
-          values.push(value);
-          if (values.length === 2) break;
-        }
-      })();
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      state.value = 5;
-      state.value = 10;
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(values).toEqual([10, 20]);
-      await iterator.return();
-    });
-
     it("should support then (Promise-like behavior)", async () => {
       const promise = state.then((x) => x * 2);
 

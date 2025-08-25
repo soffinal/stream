@@ -1,7 +1,7 @@
 {
   "name": "@soffinal/stream",
   "module": "./dist/index.js",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "A reactive event streaming library for TypeScript/JavaScript",
   "type": "module",
   "devDependencies": {
@@ -9,12 +9,6 @@
   },
   "peerDependencies": {
     "typescript": "^5.9.2"
-  },
-  "scripts": {
-    "clean": "rm -rf dist",
-    "build": "bun run clean && bun build src/index.ts --outdir dist --target node --format esm --sourcemap --minify && bun run build:types",
-    "build:types": "tsc --emitDeclarationOnly --allowImportingTsExtensions --noEmit false",
-    "release": " git add . && git commit -m \"Release v$(node -p 'require(\"./package.json\").version')\" && git tag v$(node -p 'require(\"./package.json\").version')"
   },
   "exports": {
     ".": {
@@ -29,7 +23,8 @@
     "typescript",
     "event",
     "observable",
-    "emitter"
+    "emitter",
+    "adaptive constraints"
   ],
   "author": "Soffinal <smari.sofiane@gmail.com>",
   "license": "MIT",
@@ -42,6 +37,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ]
 }

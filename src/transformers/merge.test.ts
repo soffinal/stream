@@ -1,242 +1,221 @@
-import { test, expect } from "bun:test";
-import { Stream } from "../stream.ts";
-import { merge } from "./merge.ts";
+import { describe, it, expect } from "bun:test";
+import { Stream } from "../stream";
+import { merge } from "./merge";
 
-test("merge - two streams", async () => {
-  const stream1 = new Stream<number>();
-  const stream2 = new Stream<number>();
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: number[] = [];
-  merged.listen(value => results.push(value));
-  
-  stream1.push(1, 3);
-  stream2.push(2, 4);
-  stream1.push(5);
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results.sort()).toEqual([1, 2, 3, 4, 5]);
-});
+describe("merge transformer", () => {
+  describe("basic functionality", () => {
+    it("should merge two streams with same type", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
 
-test("merge - multiple streams", async () => {
-  const stream1 = new Stream<string>();
-  const stream2 = new Stream<string>();
-  const stream3 = new Stream<string>();
-  
-  const merged = stream1.pipe(merge(stream2, stream3));
-  
-  const results: string[] = [];
-  merged.listen(value => results.push(value));
-  
-  stream1.push("a");
-  stream2.push("b");
-  stream3.push("c");
-  stream1.push("d");
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toEqual(["a", "b", "c", "d"]);
-});
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
 
-test("merge - different types", async () => {
-  const numbers = new Stream<number>();
-  const strings = new Stream<string>();
-  const merged = numbers.pipe(merge(strings));
-  
-  const results: Array<number | string> = [];
-  merged.listen(value => results.push(value));
-  
-  numbers.push(1);
-  strings.push("hello");
-  numbers.push(2);
-  strings.push("world");
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toEqual([1, "hello", 2, "world"]);
-});
+      stream1.push(1, 2);
+      stream2.push(3, 4);
+      stream1.push(5);
 
-test("merge - async generators", async () => {
-  const stream1 = new Stream<number>(async function* () {
-    yield 1;
-    await new Promise(resolve => setTimeout(resolve, 10));
-    yield 3;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it("should merge streams with different types", async () => {
+      const numberStream = new Stream<number>();
+      const stringStream = new Stream<string>();
+      const merged = numberStream.pipe(merge(stringStream));
+
+      const results: (number | string)[] = [];
+      merged.listen((value) => results.push(value));
+
+      numberStream.push(1);
+      stringStream.push("hello");
+      numberStream.push(2);
+      stringStream.push("world");
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, "hello", 2, "world"]);
+    });
+
+    it("should handle empty streams", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
+
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([]);
+    });
   });
-  
-  const stream2 = new Stream<number>(async function* () {
-    await new Promise(resolve => setTimeout(resolve, 5));
-    yield 2;
-    await new Promise(resolve => setTimeout(resolve, 10));
-    yield 4;
+
+  describe("multiple streams", () => {
+    it("should merge three streams", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const stream3 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2, stream3));
+
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      stream1.push(1);
+      stream2.push(2);
+      stream3.push(3);
+      stream1.push(4);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, 2, 3, 4]);
+    });
+
+    it("should merge multiple streams with different types", async () => {
+      const numberStream = new Stream<number>();
+      const stringStream = new Stream<string>();
+      const booleanStream = new Stream<boolean>();
+      const merged = numberStream.pipe(merge(stringStream, booleanStream));
+
+      const results: (number | string | boolean)[] = [];
+      merged.listen((value) => results.push(value));
+
+      numberStream.push(42);
+      stringStream.push("it");
+      booleanStream.push(true);
+      numberStream.push(100);
+      booleanStream.push(false);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([42, "it", true, 100, false]);
+    });
   });
-  
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: number[] = [];
-  merged.listen(value => results.push(value));
-  
-  // Start the generators
-  stream1.listen(() => {});
-  stream2.listen(() => {});
-  
-  await new Promise(resolve => setTimeout(resolve, 50));
-  
-  expect(results.sort()).toEqual([1, 2, 3, 4]);
-});
 
-test("merge - real-world: multiple event sources", async () => {
-  interface UserEvent {
-    type: string;
-    userId: string;
-    timestamp: number;
-  }
-  
-  const clickEvents = new Stream<UserEvent>();
-  const keyboardEvents = new Stream<UserEvent>();
-  const scrollEvents = new Stream<UserEvent>();
-  
-  const allEvents = clickEvents.pipe(merge(keyboardEvents, scrollEvents));
-  
-  const results: UserEvent[] = [];
-  allEvents.listen(event => results.push(event));
-  
-  const now = Date.now();
-  
-  clickEvents.push({ type: "click", userId: "user1", timestamp: now });
-  keyboardEvents.push({ type: "keydown", userId: "user1", timestamp: now + 10 });
-  scrollEvents.push({ type: "scroll", userId: "user1", timestamp: now + 20 });
-  clickEvents.push({ type: "click", userId: "user2", timestamp: now + 30 });
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toHaveLength(4);
-  expect(results.map(e => e.type)).toEqual(["click", "keydown", "scroll", "click"]);
-});
+  describe("timing and order", () => {
+    it("should preserve emission order within same tick", async () => {
+      const stream1 = new Stream<string>();
+      const stream2 = new Stream<string>();
+      const merged = stream1.pipe(merge(stream2));
 
-test("merge - real-world: multiple API endpoints", async () => {
-  interface ApiResponse {
-    source: string;
-    data: any;
-  }
-  
-  const userApi = new Stream<ApiResponse>();
-  const productApi = new Stream<ApiResponse>();
-  const orderApi = new Stream<ApiResponse>();
-  
-  const allResponses = userApi.pipe(merge(productApi, orderApi));
-  
-  const results: ApiResponse[] = [];
-  allResponses.listen(response => results.push(response));
-  
-  userApi.push({ source: "users", data: { id: 1, name: "John" } });
-  productApi.push({ source: "products", data: { id: 101, name: "Laptop" } });
-  orderApi.push({ source: "orders", data: { id: 201, userId: 1, productId: 101 } });
-  userApi.push({ source: "users", data: { id: 2, name: "Jane" } });
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toEqual([
-    { source: "users", data: { id: 1, name: "John" } },
-    { source: "products", data: { id: 101, name: "Laptop" } },
-    { source: "orders", data: { id: 201, userId: 1, productId: 101 } },
-    { source: "users", data: { id: 2, name: "Jane" } }
-  ]);
-});
+      const results: string[] = [];
+      merged.listen((value) => results.push(value));
 
-test("merge - real-world: notification channels", async () => {
-  interface Notification {
-    channel: string;
-    message: string;
-    priority: "low" | "medium" | "high";
-  }
-  
-  const emailNotifications = new Stream<Notification>();
-  const pushNotifications = new Stream<Notification>();
-  const smsNotifications = new Stream<Notification>();
-  
-  const allNotifications = emailNotifications.pipe(merge(pushNotifications, smsNotifications));
-  
-  const results: Notification[] = [];
-  allNotifications.listen(notification => results.push(notification));
-  
-  emailNotifications.push({ channel: "email", message: "Welcome!", priority: "low" });
-  pushNotifications.push({ channel: "push", message: "New message", priority: "medium" });
-  smsNotifications.push({ channel: "sms", message: "Urgent alert", priority: "high" });
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toHaveLength(3);
-  expect(results.find(n => n.channel === "sms")?.priority).toBe("high");
-});
+      // Push multiple values in same tick
+      stream1.push("a", "b");
+      stream2.push("c", "d");
+      stream1.push("e");
 
-test("merge - edge case: empty streams", async () => {
-  const stream1 = new Stream<number>();
-  const stream2 = new Stream<number>();
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: number[] = [];
-  merged.listen(value => results.push(value));
-  
-  // No values pushed to either stream
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toEqual([]);
-});
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-test("merge - edge case: one stream only", async () => {
-  const stream1 = new Stream<string>();
-  const stream2 = new Stream<string>();
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: string[] = [];
-  merged.listen(value => results.push(value));
-  
-  stream1.push("a", "b", "c");
-  // stream2 never emits
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results).toEqual(["a", "b", "c"]);
-});
+      expect(results).toEqual(["a", "b", "c", "d", "e"]);
+    });
 
-test("merge - edge case: single stream merge", async () => {
-  const stream1 = new Stream<number>();
-  const stream2 = new Stream<number>();
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: number[] = [];
-  merged.listen(value => results.push(value));
-  
-  stream1.push(1, 2);
-  stream2.push(3, 4);
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  expect(results.sort()).toEqual([1, 2, 3, 4]);
-});
+    it("should handle async timing correctly", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
 
-test("merge - timing and order preservation within stream", async () => {
-  const stream1 = new Stream<string>();
-  const stream2 = new Stream<string>();
-  const merged = stream1.pipe(merge(stream2));
-  
-  const results: string[] = [];
-  merged.listen(value => results.push(value));
-  
-  // Push in specific order
-  stream1.push("1a");
-  stream1.push("1b");
-  stream2.push("2a");
-  stream1.push("1c");
-  stream2.push("2b");
-  
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
-  // Order within each stream should be preserved
-  const stream1Results = results.filter(r => r.startsWith("1"));
-  const stream2Results = results.filter(r => r.startsWith("2"));
-  
-  expect(stream1Results).toEqual(["1a", "1b", "1c"]);
-  expect(stream2Results).toEqual(["2a", "2b"]);
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      stream1.push(1);
+
+      setTimeout(() => stream2.push(2), 5);
+      setTimeout(() => stream1.push(3), 10);
+      setTimeout(() => stream2.push(4), 15);
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(results).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  describe("cleanup and memory management", () => {
+    it("should cleanup listeners when merged stream is abandoned", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
+
+      let listenerCount = 0;
+      const cleanup = merged.listen(() => listenerCount++);
+
+      stream1.push(1);
+      stream2.push(2);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(listenerCount).toBe(2);
+
+      // Cleanup
+      cleanup();
+
+      stream1.push(3);
+      stream2.push(4);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(listenerCount).toBe(2); // Should not increase
+    });
+
+    it("should handle one stream ending while others continue", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
+
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      stream1.push(1);
+      stream2.push(2);
+
+      // Simulate stream1 ending (no more pushes)
+      stream2.push(3, 4);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should handle rapid successive emissions", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
+
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      // Rapid emissions
+      for (let i = 0; i < 100; i++) {
+        if (i % 2 === 0) {
+          stream1.push(i);
+        } else {
+          stream2.push(i);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toHaveLength(100);
+      expect(results).toEqual(Array.from({ length: 100 }, (_, i) => i));
+    });
+
+    it("should work with single stream merge", async () => {
+      const stream1 = new Stream<number>();
+      const stream2 = new Stream<number>();
+      const merged = stream1.pipe(merge(stream2));
+
+      const results: number[] = [];
+      merged.listen((value) => results.push(value));
+
+      // Only use one stream
+      stream1.push(1, 2, 3);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, 2, 3]);
+    });
+  });
 });

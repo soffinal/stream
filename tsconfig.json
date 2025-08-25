@@ -17,6 +17,13 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*",
+    "src/transformers/filter.test.ts",
+    "src/transformers/flat.test.ts",
+    "src/transformers/map.test.ts",
+    "src/transformers/merge.test.ts",
+    "src/stream.test.ts"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

@@ -243,69 +243,6 @@ describe("Set", () => {
     });
   });
 
-  describe("stream operations", () => {
-    it("should support filter on add stream", async () => {
-      const filtered = set.add.filter((x) => x > 5);
-      const values: number[] = [];
-
-      const iterator = filtered[Symbol.asyncIterator]();
-      (async () => {
-        for await (const value of iterator) {
-          values.push(value);
-          if (values.length === 2) break;
-        }
-      })();
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      set.add(3); // filtered out
-      set.add(7); // included
-      set.add(2); // filtered out
-      set.add(10); // included
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(values).toEqual([7, 10]);
-      await iterator.return();
-    });
-
-    it("should support map on delete stream", async () => {
-      set.add(1);
-      set.add(2);
-      set.add(3);
-
-      const mapped = set.delete.map((x) => `deleted-${x}`);
-      const values: string[] = [];
-
-      const iterator = mapped[Symbol.asyncIterator]();
-      (async () => {
-        for await (const value of iterator) {
-          values.push(value);
-          if (values.length === 2) break;
-        }
-      })();
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      set.delete(1);
-      set.delete(2);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(values).toEqual(["deleted-1", "deleted-2"]);
-      await iterator.return();
-    });
-
-    it("should support then (Promise-like behavior)", async () => {
-      const promise = set.add.then((x) => x * 2);
-
-      set.add(21);
-
-      const result = await promise;
-      expect(result).toBe(42);
-    });
-  });
-
   describe("Set inheritance", () => {
     it("should inherit all Set methods", () => {
       set.add(1);
