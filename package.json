@@ -36,6 +36,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
+    "src/transformers/*.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
