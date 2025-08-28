@@ -1,6 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { Stream } from "../stream";
 import { map } from "./map";
+import { filter } from "./filter";
+import { State } from "../reactive/state";
 
 describe("map transformer", () => {
   describe("basic functionality", () => {
@@ -356,6 +358,60 @@ describe("map transformer", () => {
         { value: 2, historyLength: 2 },
         { value: 3, historyLength: 3 },
       ]);
+    });
+  });
+
+  describe("New Pipe Enhancement", () => {
+    it("should work with State constructor integration", async () => {
+      const source = new Stream<number>();
+      const mapped = source.pipe(map({}, (_, v) => [v.toString(), {}]));
+      const state = new State("0", mapped);
+
+      const results: string[] = [];
+      state.listen((value) => results.push(value));
+
+      source.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(results).toEqual(["1", "2", "3"]);
+      expect(state.value).toBe("3");
+    });
+
+    it("should work in complex transformation chains", async () => {
+      const source = new Stream<number>();
+
+      const result = source
+        .pipe(filter({}, (_, v) => [v > 0, {}]))
+        .pipe(map({}, (_, v) => [v * 2, {}]))
+        .pipe(map({}, (_, v) => [v.toString(), {}]));
+
+      const results: string[] = [];
+      result.listen((value) => results.push(value));
+
+      source.push(-1, 1, -2, 2, 3);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(results).toEqual(["2", "4", "6"]);
+    });
+
+    it("should maintain correct type inference", async () => {
+      const source = new Stream<number>();
+
+      // Type should be Stream<string>
+      const stringStream = source.pipe(map({}, (_, v) => [v.toString(), {}]));
+
+      // Type should be Stream<boolean>
+      const boolStream = stringStream.pipe(map({}, (_, v) => [v.length > 1, {}]));
+
+      const stringResults: string[] = [];
+      const boolResults: boolean[] = [];
+
+      stringStream.listen((value) => stringResults.push(value));
+      boolStream.listen((value) => boolResults.push(value));
+
+      source.push(1, 10, 100);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(stringResults).toEqual(["1", "10", "100"]);
+      expect(boolResults).toEqual([false, true, true]);
     });
   });
 });

@@ -14,6 +14,8 @@ import { Stream } from "../stream.ts";
  *
  * @returns A transformer function that can be used with `.pipe()`
  *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * // Simple filtering
  * stream.pipe(filter({}, (_, value) => [value > 0, {}]))
@@ -27,38 +29,7 @@ import { Stream } from "../stream.ts";
  *   })
  * )
  *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: simpleFilter() - Simple predicate filtering
- * const simpleFilter = <T>(predicate: (value: T) => boolean | Promise<boolean>) =>
- *   filter<T, {}>({}, async (_, value) => {
- *     const shouldPass = await predicate(value);
- *     return [shouldPass, {}];
- *   });
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: take(n) - Limit to N items
- * const take = <T>(n: number) =>
- *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
- *     if (state.count >= n) return;
- *     return [true, { count: state.count + 1 }];
- *   });
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: skip(n) - Skip first N items
- * const skip = <T>(n: number) =>
- *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
- *     const newCount = state.count + 1;
- *     return [newCount > n, { count: newCount }];
- *   });
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: distinct() - Remove duplicates
- * const distinct = <T>() =>
- *   filter<T, { seen: Set<T> }>({ seen: new Set() }, (state, value) => {
- *     if (state.seen.has(value)) return [false, state];
- *     state.seen.add(value);
- *     return [true, state];
- *   });
+
  *
  */
 export function filter<VALUE, STATE extends Record<string, unknown> = {}>(

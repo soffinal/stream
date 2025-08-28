@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
 import { State } from "./state";
+import { Stream } from "../stream";
+import { filter, map } from "../transformers";
 
 describe("State", () => {
   let state: State<number>;
@@ -180,6 +182,51 @@ describe("State", () => {
       // Setting the same reference triggers listeners
       state.value = obj;
       expect(listener).toHaveBeenCalledWith(obj);
+    });
+  });
+
+  describe("Stream Constructor Enhancement", () => {
+    it("should work with stream constructor", async () => {
+      const source = new Stream<number>();
+      const state = new State(0, source);
+
+      const values: number[] = [];
+      state.listen((value) => values.push(value));
+
+      source.push(1, 2, 3);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(values).toEqual([1, 2, 3]);
+      expect(state.value).toBe(3);
+    });
+
+    it("should work with transformed streams", async () => {
+      const source = new Stream<number>();
+      const transformed = source.pipe(filter({}, (_, v) => [v > 0, {}])).pipe(map({}, (_, v) => [v.toString(), {}]));
+
+      const state = new State("0", transformed);
+
+      const values: string[] = [];
+      state.listen((value) => values.push(value));
+
+      source.push(-1, 1, -2, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(values).toEqual(["1", "2", "3"]);
+      expect(state.value).toBe("3");
+    });
+
+    it("should handle generator function constructor", async () => {
+      const state = new State(0, async function* () {
+        yield 1;
+        yield 2;
+        yield 3;
+      });
+
+      const values: number[] = [];
+      state.listen((value) => values.push(value));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(values).toEqual([1, 2, 3]);
+      expect(state.value).toBe(3);
     });
   });
 });

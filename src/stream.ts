@@ -1,5 +1,5 @@
 export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-
+export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
 /**
  * A reactive streaming library that provides async-first data structures with built-in event streams.
  *
@@ -27,10 +27,74 @@ export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never
  *   if (value === 10) break;
  * }
  * ```
+ *
+ * @example
+ * // 📦 COPY-PASTE TRANSFORMERS LIBRARY - Essential transformers for immediate use
+ *
+ * // FILTERING TRANSFORMERS
+ * const simpleFilter = <T>(predicate: (value: T) => boolean | Promise<boolean>) =>
+ *   filter<T, {}>({}, async (_, value) => {
+ *     const shouldPass = await predicate(value);
+ *     return [shouldPass, {}];
+ *   });
+ *
+ * const take = <T>(n: number) =>
+ *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
+ *     if (state.count >= n) return;
+ *     return [true, { count: state.count + 1 }];
+ *   });
+ *
+ * const distinct = <T>() =>
+ *   filter<T, { seen: Set<T> }>({ seen: new Set() }, (state, value) => {
+ *     if (state.seen.has(value)) return [false, state];
+ *     state.seen.add(value);
+ *     return [true, state];
+ *   });
+ *
+ * const tap = <T>(fn: (value: T) => void | Promise<void>) =>
+ *   filter<T, {}>({}, async (_, value) => {
+ *     await fn(value);
+ *     return [true, {}];
+ *   });
+ *
+ * // MAPPING TRANSFORMERS
+ * const simpleMap = <T, U>(fn: (value: T) => U | Promise<U>) =>
+ *   map<T, {}, U>({}, async (_, value) => {
+ *     const result = await fn(value);
+ *     return [result, {}];
+ *   });
+ *
+ * const withIndex = <T>() =>
+ *   map<T, { index: number }, { value: T; index: number }>(
+ *     { index: 0 },
+ *     (state, value) => [
+ *       { value, index: state.index },
+ *       { index: state.index + 1 }
+ *     ]
+ *   );
+ *
+ * const delay = <T>(ms: number) =>
+ *   map<T, {}, T>({}, async (_, value) => {
+ *     await new Promise(resolve => setTimeout(resolve, ms));
+ *     return [value, {}];
+ *   });
+ *
+ * const scan = <T, U>(fn: (acc: U, value: T) => U, initial: U) =>
+ *   map<T, { acc: U }, U>({ acc: initial }, (state, value) => {
+ *     const newAcc = fn(state.acc, value);
+ *     return [newAcc, { acc: newAcc }];
+ *   });
+ *
+ * // STATE CONVERTER
+ * const toState = <T>(initialValue: T) => (stream: Stream<T>) => {
+ *   return new State(initialValue, stream);
+ * };
+ *
+ * // Usage: stream.pipe(simpleFilter(x => x > 0)).pipe(take(5)).pipe(toState(0));
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   protected _listeners: Set<(value: VALUE) => void> = new Set<(value: VALUE) => void>();
-  protected _generatorFn: (() => AsyncGenerator<VALUE, void>) | undefined;
+  protected _generatorFn: FunctionGenerator<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
   protected _listenerRemoved: Stream<void> | undefined;
@@ -39,6 +103,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * Creates a new Stream instance.
    *
    * @param generatorFn - Optional async generator function to produce values you can use it for creating stream with custom transformation
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -68,13 +134,15 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * ```
    */
   constructor();
-  constructor(generatorFn: () => AsyncGenerator<VALUE, void>);
-  constructor(generatorFn?: () => AsyncGenerator<VALUE, void>) {
-    this._generatorFn = generatorFn;
+  constructor(stream: FunctionGenerator<VALUE> | Stream<VALUE>);
+  constructor(stream?: FunctionGenerator<VALUE> | Stream<VALUE>) {
+    this._generatorFn = stream instanceof Stream ? () => stream[Symbol.asyncIterator]() : stream;
   }
 
   /**
    * Returns true if the stream has active listeners.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -95,6 +163,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   /**
    * Stream that emits when a listener is added.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const stream = new Stream<number>();
@@ -110,6 +180,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
 
   /**
    * Stream that emits when a listener is removed.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -149,6 +221,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   /**
    * Pushes one or more values to all listeners.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @param value - The first value to push
    * @param values - Additional values to push
    *
@@ -176,6 +250,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * @param listener - Function to call when values are pushed
    * @param signal - Optional AbortSignal for cleanup
    * @returns Cleanup function to remove the listener
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -235,6 +311,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * @param onfulfilled - Optional transformation function
    * @returns Promise that resolves with the first value
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const stream = new Stream<number>();
@@ -260,18 +338,20 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   /**
    * Applies a transformer function to this stream, enabling functional composition.
    *
-   * @param transformer - Function that takes a stream and returns a transformed stream
-   * @returns New stream with the transformation applied
+   * @param transformer - Function that takes a stream and returns any output type
+   * @returns The result of the transformer function
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
    * const numbers = new Stream<number>();
    *
-   * // Using built-in transformers
+   * // Chain transformers
    * const result = numbers
-   *   .pipe(filter(n => n > 0))
-   *   .pipe(map(n => n * 2))
-   *   .pipe(group(batch => batch.length >= 3));
+   *   .pipe(filter({}, (_, n) => [n > 0, {}]))
+   *   .pipe(map({}, (_, n) => [n * 2, {}]))
+   *   .pipe(toState(0));
    *
    * // Custom transformer
    * const throttle = <T>(ms: number) => (stream: Stream<T>) =>
@@ -286,10 +366,12 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    *     }
    *   });
    *
-   * numbers.pipe(throttle(1000));
+   * // Transform to any type
+   * const stringResult = numbers.pipe(throttle(1000));
+   * const stateResult = numbers.pipe(toState(0));
    * ```
    */
-  pipe<OUTPUT>(transformer: (stream: Stream<VALUE>) => Stream<OUTPUT>): Stream<OUTPUT> {
+  pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT {
     return transformer(this);
   }
 }

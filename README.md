@@ -18,7 +18,6 @@ A groundbreaking streaming library that introduces **Adaptive Reactive Programmi
 - [API Reference](#api-reference)
 - [Examples](#examples)
 - [Performance](#performance)
-- [Browser Support](#browser-support)
 - [Migration Guide](#migration-guide)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -151,6 +150,38 @@ for await (const event of userEvents) {
 }
 ```
 
+### Pipe: Stream-to-Stream Composition
+
+The `pipe` method enforces reactive composition - it only accepts functions that return Stream instances, maintaining the infinite reactive pipeline:
+
+```typescript
+// All transformers return Streams - infinite chaining
+stream.pipe(filter({}, (_, v) => [v > 0, {}])); // → Stream<T>
+stream.pipe(map({}, (_, v) => [v.toString(), {}])); // → Stream<string>
+stream.pipe(toState("initial")); // → State<string> (extends Stream)
+
+// Infinite chaining - every pipe returns a Stream
+const result = stream
+  .pipe(filter({}, (_, v) => [v > 0, {}]))
+  .pipe(map({}, (_, v) => [v * 2, {}]))
+  .pipe(take(5))
+  .pipe(delay(100))
+  .pipe(distinct()); // Always chainable
+```
+
+**Streams are infinite** - Like event emitters, they don't terminate naturally. The `pipe` constraint ensures you maintain the reactive paradigm throughout your entire pipeline.
+
+**Perfect TypeScript inference** - no annotations needed:
+
+```typescript
+const numbers = new Stream<number>();
+
+// TypeScript knows these are all Streams
+const doubled = numbers.pipe(map({}, (_, n) => [n * 2, {}])); // Stream<number>
+const strings = numbers.pipe(map({}, (_, n) => [n.toString(), {}])); // Stream<string>
+const state = numbers.pipe(toState(0)); // State<number>
+```
+
 ### Universal Primitives: The Four Algebraic Operations
 
 All stream operations are built from four universal primitives with **Adaptive Constraints**:
@@ -250,47 +281,121 @@ const flattened = deepArrays.pipe(flat(2)); // Flatten 2 levels deep
 
 **[📖 Complete Flat Documentation →](src/transformers/flat.md)**
 
-### Documentation-as-Distribution: Revolutionary Copy-Paste Transformers
-
-**🚀 World's First Documentation-as-Distribution System**
+### Documentation-as-Distribution: Copy-Paste Transformers
 
 No separate repos, no CLI tools, no package management - just copy-paste ready transformers embedded in JSDoc!
 
+But more importantly: **Documentation-as-Distribution is actually Education-as-Distribution.**
+
+#### The Educational Transparency Revolution
+
+Unlike traditional libraries where transformers are minified black boxes, our approach makes **every implementation pattern visible and learnable**:
+
 ```typescript
 // 📦 All transformers are copy-pastable from IntelliSense!
-// Just hover over any primitive in your IDE to see the transformer library
+// Hover over 'Stream' to see the complete transformers library
 
-// Example: Essential transformers available via autocomplete
-const searchInput = new Stream<string>();
+// Example: Users don't just get functions - they get implementation education
+const searchInput = new Stream<string>(); // ← Hover here for full library
 const searchResults = searchInput
-  .pipe(distinct()) // Copy from filter() JSDoc
-  .pipe(simpleFilter((q) => q.length > 2)) // Copy from filter() JSDoc
-  .pipe(take(10)) // Copy from filter() JSDoc
-  .pipe(delay(300)) // Copy from map() JSDoc
-  .pipe(simpleMap((query) => searchAPI(query))); // Copy from map() JSDoc
+  .pipe(distinct()) // Copy from Stream JSDoc - learn deduplication patterns
+  .pipe(simpleFilter((q) => q.length > 2)) // Copy from Stream JSDoc - learn filtering logic
+  .pipe(take(10)) // Copy from Stream JSDoc - learn termination patterns
+  .pipe(delay(300)) // Copy from Stream JSDoc - learn async transformation
+  .pipe(simpleMap((query) => searchAPI(query))); // Copy from Stream JSDoc - learn mapping patterns
 ```
 
-**Benefits:**
+#### What Users Actually Learn
+
+When users hover over any function in JSDoc, they see **complete implementation patterns**:
+
+```typescript
+// Users see EXACTLY how to build transformers
+const take = <T>(n: number) =>
+  filter<T, { count: number }>({ count: 0 }, (state, value) => {
+    if (state.count >= n) return; // ← Learn termination patterns
+    return [true, { count: state.count + 1 }]; // ← Learn state evolution
+  });
+
+const distinct = <T>() =>
+  filter<T, { seen: Set<T> }>({ seen: new Set() }, (state, value) => {
+    if (state.seen.has(value)) return [false, state]; // ← Learn deduplication logic
+    state.seen.add(value); // ← Learn state mutation patterns
+    return [true, state];
+  });
+```
+
+#### From Consumers to Creators
+
+This transparency empowers users to become **transformer architects**:
+
+```typescript
+// After learning from JSDoc examples, users create their own:
+const withTimestamp = <T>() =>
+  map<T, {}, { value: T; timestamp: number }>(
+    {}, // ← Learned: empty state when no memory needed
+    (_, value) => [
+      { value, timestamp: Date.now() }, // ← Learned: transformation pattern
+      {}, // ← Learned: state management
+    ]
+  );
+
+const rateLimited = <T>(maxPerSecond: number) =>
+  filter<T, { timestamps: number[] }>({ timestamps: [] }, (state, value) => {
+    const now = Date.now();
+    const recent = state.timestamps.filter((t) => now - t < 1000);
+    if (recent.length >= maxPerSecond) return [false, { timestamps: recent }];
+    return [true, { timestamps: [...recent, now] }];
+  });
+```
+
+#### Benefits Beyond Bundle Size
+
+**Traditional Libraries (Code-as-Distribution):**
+
+- ❌ **Black box implementations** - Minified, unreadable code
+- ❌ **Separate documentation** - Often outdated, disconnected from code
+- ❌ **Limited extensibility** - Users can only use what's provided
+- ❌ **Learning barrier** - No insight into implementation patterns
+- ❌ **Bundle bloat** - Every transformer adds runtime cost
+
+**Documentation-as-Distribution:**
 
 - ✅ **Zero friction** - Copy-paste ready transformers
 - ✅ **Perfect discoverability** - IntelliSense shows all available transformers
 - ✅ **Always up-to-date** - Examples match current API version
 - ✅ **No ecosystem fragmentation** - Everything in one place
-- ✅ **Self-documenting** - Usage examples included
+- ✅ **Educational transparency** - Users learn implementation patterns
+- ✅ **Infinite extensibility** - Users become transformer creators
+- ✅ **Self-documenting** - Usage examples included with working code
+- ✅ **Zero bundle cost** - JSDoc stripped at compile time
+
+#### The Network Effect
+
+Documentation-as-Distribution creates **multiplicative value**:
+
+1. **User discovers** transformer in JSDoc
+2. **User learns** implementation pattern
+3. **User creates** custom transformers for their domain
+4. **User shares** patterns with their team
+5. **Team creates** hundreds of variations
+6. **Knowledge multiplies** exponentially across the community
 
 **How it works:**
 
-1. Hover over `filter()`, `map()`, `merge()`, or `flat()` in your IDE
-2. Browse the 📦 COPY-PASTE TRANSFORMER examples
+1. Hover over `Stream` in your IDE to see the complete transformers library
+2. Or hover over individual functions for quick references
 3. Copy the transformer you need
 4. Use immediately - perfect TypeScript inference included!
+5. **Learn the patterns** and create your own infinite variations
 
 **Available Transformers (via JSDoc):**
 
-- `take(n)`, `skip(n)`, `distinct()` - Essential filtering
-- `withIndex()`, `delay(ms)`, `pluck(key)` - Common transformations
+- `take(n)`, `skip(n)`, `distinct()`, `tap(fn)` - Essential filtering patterns
+- `withIndex()`, `delay(ms)`, `pluck(key)`, `scan(fn, initial)` - Common transformation patterns
 - `simpleFilter(predicate)` - Convenient filtering without state
 - `simpleMap(fn)` - Convenient mapping without state
+- `toState(initialValue)` - Convert streams to reactive state
 - More transformers added with each release!
 
 **📊 Bundle Size Impact:**
@@ -299,6 +404,8 @@ const searchResults = searchInput
 - **Your app bundle**: Always only 5.5KB (runtime code only, zero JSDoc overhead)
 - **Tree-shaking**: Only imported functions included in final bundle
 - **JSDoc transformers**: "Free" - rich transformer library without production cost
+
+**You're not just building applications - you're learning a paradigm that scales infinitely.**
 
 ### Manual Composition
 
@@ -326,6 +433,10 @@ console.log(counter.value); // 0
 // Write triggers all listeners
 counter.value = 5;
 
+// State from transformed streams
+const source = new Stream<number>();
+const derivedState = new State(0, source.pipe(map({}, (_, v) => [v * 2, {}])));
+
 // Derived state using transformers
 const isLoggedIn = user.pipe(map({}, (_, u) => [u !== null, {}]));
 
@@ -333,6 +444,12 @@ const userDisplayName = user.pipe(
   filter({}, (_, u) => [u !== null, {}]),
   map({}, (_, u) => [`${u.firstName} ${u.lastName}`, {}])
 );
+
+// Convert streams to state with toState transformer
+const processedState = source
+  .pipe(filter({}, (_, v) => [v > 0, {}]))
+  .pipe(map({}, (_, v) => [v.toString(), {}]))
+  .pipe(toState("0")); // Explicit initial value
 
 // Automatic UI updates
 isLoggedIn.listen((loggedIn) => {
@@ -397,7 +514,7 @@ activeUsers.add("user1");
 
 - `push(...values: T[]): void` - Emit values to all listeners
 - `listen(callback: (value: T) => void, signal?: AbortSignal | Stream<any>): () => void` - Add listener, returns cleanup
-- `pipe<U>(transformer: (stream: Stream<T>) => Stream<U>): Stream<U>` - Apply functional transformer
+- `pipe<OUTPUT>(transformer: (stream: this) => OUTPUT): OUTPUT` - Apply any transformer (flexible return type)
 
 #### Async Interface
 
@@ -411,6 +528,11 @@ activeUsers.add("user1");
 - `listenerRemoved: Stream<void>` - Emits when listener is removed
 
 ### State\<T> extends Stream\<T>
+
+#### Constructor
+
+- `new State(initialValue: T)` - Create state with initial value
+- `new State(initialValue: T, stream: Stream<T>)` - Create state from stream
 
 #### Additional Properties
 

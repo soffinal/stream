@@ -7,6 +7,8 @@ import { Stream } from "../stream.ts";
  * @template KEY - The type of keys in the map
  * @template VALUE - The type of values in the map
  *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * ```typescript
  * const cache = new Map<string, any>();
@@ -34,6 +36,8 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
    * Sets a key-value pair in the map and emits the entry to listeners.
    * Only emits if the value actually changes (not same key-value pair).
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const config = new Map<string, string>();
@@ -50,6 +54,8 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
    * Deletes a key from the map and emits the deleted entry to listeners.
    * Only emits if the key was actually deleted (existed in map).
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const users = new Map([['alice', { age: 30 }], ['bob', { age: 25 }]]);
@@ -64,6 +70,8 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
   /**
    * Clears all entries from the map and emits to listeners.
    * Only emits if the map was not already empty.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -80,6 +88,8 @@ export class Map<KEY, VALUE> extends globalThis.Map<KEY, VALUE> {
    * Creates a new reactive Map.
    *
    * @param entries - Optional iterable of initial key-value pairs
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
