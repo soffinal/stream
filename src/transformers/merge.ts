@@ -11,7 +11,9 @@ type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
  * @param streams - Additional streams to merge with the source stream
  * 
  * @returns A transformer that merges all streams into one with union types
- * 
+ *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * // Basic merge with type safety
  * const numbers = new Stream<number>();

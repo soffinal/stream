@@ -1,3 +1,4 @@
+import { State } from "../reactive/state.ts";
 import { Stream } from "../stream.ts";
 
 /**
@@ -14,6 +15,8 @@ import { Stream } from "../stream.ts";
  *   - Preserves order even with async operations
  *
  * @returns A transformer function that can be used with `.pipe()`
+ * 
+ * @see {@link Stream} - Complete copy-paste transformers library
  *
  * @example
  * // Simple transformation
@@ -28,37 +31,7 @@ import { Stream } from "../stream.ts";
  *   })
  * )
  *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: simpleMap() - Simple transformation
- * const simpleMap = <T, U>(fn: (value: T) => U | Promise<U>) =>
- *   map<T, {}, U>({}, async (_, value) => {
- *     const result = await fn(value);
- *     return [result, {}];
- *   });
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: withIndex() - Add index to values
- * const withIndex = <T>() =>
- *   map<T, { index: number }, { value: T; index: number }>(
- *     { index: 0 },
- *     (state, value) => [
- *       { value, index: state.index },
- *       { index: state.index + 1 }
- *     ]
- *   );
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: delay(ms) - Delay each value
- * const delay = <T>(ms: number) =>
- *   map<T, {}, T>({}, async (_, value) => {
- *     await new Promise(resolve => setTimeout(resolve, ms));
- *     return [value, {}];
- *   });
- *
- * @example
- * // 📦 COPY-PASTE TRANSFORMER: pluck(key) - Extract property
- * const pluck = <T, K extends keyof T>(key: K) =>
- *   map<T, {}, T[K]>({}, (_, value) => [value[key], {}]);
+
  *
  */
 export function map<VALUE, STATE extends Record<string, unknown>, MAPPED>(

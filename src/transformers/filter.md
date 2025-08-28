@@ -121,8 +121,6 @@ const take = <T>(n: number) =>
   });
 ```
 
-**Psychology**: `take` demonstrates **self-limiting behavior** - the filter knows its purpose and fulfills it completely, then gracefully terminates.
-
 ### distinct - The Memory Gatekeeper
 
 ```typescript
@@ -134,7 +132,19 @@ const distinct = <T>() =>
   });
 ```
 
-**Philosophy**: `distinct` embodies **perfect memory** - it never forgets what it has seen, ensuring uniqueness through accumulated values.
+### tap - The Observer Gatekeeper
+
+```typescript
+const tap = <T>(fn: (value: T) => void | Promise<void>) =>
+  filter<T, {}>({}, async (_, value) => {
+    await fn(value);
+    return [true, {}]; // Always pass through
+  });
+
+// Usage: Side effects without changing the stream
+stream.pipe(tap((value) => console.log("Saw:", value)));
+stream.pipe(tap(async (value) => await logToDatabase(value)));
+```
 
 ## The Termination
 
@@ -150,6 +160,37 @@ const untilCondition = <T>(condition: (value: T) => boolean) =>
 ```
 
 This represents a fundamental shift from infinite streams to **purpose-driven streams** that know when their work is done.
+
+## Enhanced Pipe Integration
+
+The new pipe architecture enables seamless integration:
+
+```typescript
+// Filter integrates with any transformer
+const result = stream
+  .pipe(filter({}, (_, v) => [v > 0, {}])) // Returns Stream<T>
+  .pipe(map({}, (_, v) => [v.toString(), {}])) // Returns Stream<string>
+  .pipe(toState("0")); // Returns State<string>
+
+// Complex filtering chains
+const processed = source
+  .pipe(
+    filter({ seen: 0 }, (state, v) => {
+      if (state.seen >= 100) return; // Terminate after 100
+      return [v > 0, { seen: state.seen + 1 }];
+    })
+  )
+  .pipe(tap((v) => console.log("Positive:", v)))
+  .pipe(
+    filter({ count: 0 }, (state, v) => {
+      return [state.count % 2 === 0, { count: state.count + 1 }]; // Every other
+    })
+  );
+```
+
+**Note**: Filters compose naturally because they all speak the same language - **adaptive constraints** that can terminate, remember, and evolve.
+
+**Design insight**: Filtering State creates **conditional reactivity** - the derived state only reacts to values that pass the adaptive constraints.
 
 ## Conclusion
 

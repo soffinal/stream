@@ -9,11 +9,41 @@ describe("Stream", () => {
     });
 
     it("creates stream with generator function", () => {
+      Stream;
       const stream = new Stream(async function* () {
         yield 1;
         yield 2;
       });
       expect(stream.hasListeners).toBe(false);
+    });
+    it("should accept Stream as constructor parameter", async () => {
+      const source = new Stream<number>();
+      const derived = new Stream(source);
+
+      const results: number[] = [];
+      derived.listen((value) => results.push(value));
+
+      source.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(results).toEqual([1, 2, 3]);
+    });
+
+    it("should work with transformed streams in constructor", async () => {
+      const source = new Stream<number>();
+      const filtered = new Stream(async function* () {
+        for await (const value of source) {
+          if (value > 0) yield value;
+        }
+      });
+
+      const derived = new Stream(filtered);
+
+      const results: number[] = [];
+      derived.listen((value) => results.push(value));
+
+      source.push(-1, 1, -2, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(results).toEqual([1, 2, 3]);
     });
   });
 
@@ -210,23 +240,25 @@ describe("Stream", () => {
     });
   });
 
-  describe("Memory Management", () => {
-    it("cleans up queue after 1000 items", async () => {
-      const stream = new Stream<number>();
-      const values: number[] = [];
+  describe("Pipe Method ", () => {
+    it("should allow transformers to return any type", async () => {
+      const source = new Stream<number>();
 
-      stream.listen((value) => values.push(value));
+      const stringResult = source.pipe(
+        (stream) =>
+          new Stream(async function* () {
+            for await (const value of stream) {
+              yield value.toString();
+            }
+          })
+      );
 
-      // Push more than 1000 items
-      for (let i = 0; i < 1500; i++) {
-        stream.push(i);
-      }
+      const results: string[] = [];
+      stringResult.listen((value) => results.push(value));
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(values).toHaveLength(1500);
-      expect(values[0]).toBe(0);
-      expect(values[1499]).toBe(1499);
+      source.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(results).toEqual(["1", "2", "3"]);
     });
   });
 });

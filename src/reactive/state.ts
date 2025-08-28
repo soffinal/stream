@@ -1,9 +1,11 @@
-import { Stream } from "../stream.ts";
+import { FunctionGenerator, Stream } from "../stream.ts";
 
 /**
  * A reactive state container that extends Stream to provide stateful value management.
  *
  * @template VALUE - The type of the state value
+ *
+ * @see {@link Stream} - Complete copy-paste transformers library
  *
  * @example
  * ```typescript
@@ -12,21 +14,27 @@ import { Stream } from "../stream.ts";
  * counter.listen(value => console.log('Counter:', value));
  * counter.value = 5; // Counter: 5
  *
- * // Complex state
- * interface User { id: string; name: string; }
- * const user = new State<User | null>(null);
+ * // State from stream
+ * const source = new Stream<number>();
+ * const state = new State(0, source);
+ * state.listen(value => console.log('State:', value));
+ * source.push(1, 2, 3); // State: 1, State: 2, State: 3
  *
- * user.listen(u => console.log('User:', u?.name || 'None'));
- * user.value = { id: '1', name: 'Alice' }; // User: Alice
+ * // State from transformed stream
+ * const filtered = source.pipe(filter({}, (_, v) => [v > 0, {}]));
+ * const derivedState = new State(-1, filtered);
  * ```
  */
 export class State<VALUE> extends Stream<VALUE> {
   protected _value: VALUE;
-
+  constructor(initialValue: VALUE);
+  constructor(initialValue: VALUE, stream: FunctionGenerator<VALUE> | Stream<VALUE>);
   /**
    * Creates a new State with an initial value.
    *
    * @param initialValue - The initial state value
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -35,8 +43,8 @@ export class State<VALUE> extends Stream<VALUE> {
    * const user = new State<User | null>(null);
    * ```
    */
-  constructor(initialValue: VALUE) {
-    super();
+  constructor(initialValue: VALUE, stream?: FunctionGenerator<VALUE> | Stream<VALUE>) {
+    stream ? super(stream) : super();
     this._value = initialValue;
   }
   /**
@@ -44,6 +52,8 @@ export class State<VALUE> extends Stream<VALUE> {
    * Each value triggers listeners and updates the current state.
    *
    * @param values - Values to set as state
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -62,6 +72,8 @@ export class State<VALUE> extends Stream<VALUE> {
   /**
    * Gets the current state value.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const state = new State('hello');
@@ -75,6 +87,8 @@ export class State<VALUE> extends Stream<VALUE> {
    * Sets the current state value and notifies all listeners.
    *
    * @param value - The new state value
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript

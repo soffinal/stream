@@ -11,6 +11,8 @@ import { map } from "./map.ts";
  *
  * @returns A transformer that flattens array values into individual events
  *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * // Basic flattening - 1 array → N events
  * const arrayStream = new Stream<number[]>();

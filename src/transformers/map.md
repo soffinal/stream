@@ -146,6 +146,36 @@ const pluck = <T, K extends keyof T>(key: K) => map<T, {}, T[K]>({}, (_, value) 
 
 `pluck` demonstrates **selective transformation** - the alchemist knows exactly what it wants and ignores everything else.
 
+### tap - The Observer Gatekeeper
+
+```typescript
+const tap = <T>(fn: (value: T) => void | Promise<void>) =>
+  map<T, {}, T>({}, async (_, value) => {
+    await fn(value);
+    return [value, {}]; // Always pass through
+  });
+
+// Usage: Side effects without changing the stream
+stream.pipe(tap((value) => console.log("Saw:", value)));
+stream.pipe(tap(async (value) => await logToDatabase(value)));
+```
+
+### scan - The Accumulating Alchemist
+
+```typescript
+const scan = <T, U>(fn: (acc: U, value: T) => U, initial: U) =>
+  map<T, { acc: U }, U>({ acc: initial }, (state, value) => {
+    const newAcc = fn(state.acc, value);
+    return [newAcc, { acc: newAcc }];
+  });
+
+// Usage: Accumulate values over time
+stream.pipe(scan((sum, value) => sum + value, 0)); // Running sum
+stream.pipe(scan((max, value) => Math.max(max, value), -Infinity)); // Running max
+```
+
+`scan` demonstrates **accumulative transformation** - each value builds upon all previous values, creating a growing understanding.
+
 ## The Order Preservation
 
 Async transformations maintain order because **sequence matters**. Even if transformation B completes before transformation A, the stream waits. This isn't just about correctness - it's about **respecting the narrative** of the data.
@@ -182,3 +212,5 @@ The `map` transformer isn't just about changing values - it's about **intelligen
 - **Learns** from patterns (adaptation)
 - **Evolves** its approach over time (constraints)
 - **Preserves** the narrative order (respect)
+- **Integrates** with reactive state (toState)
+- **Accumulates** knowledge over time (scan)

@@ -6,6 +6,8 @@ import { Stream } from "../stream.ts";
  * Supports negative indexing with modulo wrapping.
  * @template VALUE - The type of values stored in the list
  *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * ```typescript
  * const todos = new List<string>();
@@ -38,6 +40,8 @@ export class List<VALUE> implements Iterable<VALUE> {
    * Inserts a value at the specified index and emits the insertion event.
    * Negative indices are handled specially for insertion positioning.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const list = new List([1, 2, 3]);
@@ -52,6 +56,8 @@ export class List<VALUE> implements Iterable<VALUE> {
   /**
    * Deletes a value at the specified index and emits the deletion event.
    * Returns the deleted value or undefined if index is invalid.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -68,6 +74,8 @@ export class List<VALUE> implements Iterable<VALUE> {
    * Clears all items from the list and emits the clear event.
    * Only emits if the list was not already empty.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const list = new List([1, 2, 3]);
@@ -83,6 +91,8 @@ export class List<VALUE> implements Iterable<VALUE> {
    * Creates a new reactive List.
    *
    * @param items - Optional iterable of initial items
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -204,6 +214,8 @@ export class List<VALUE> implements Iterable<VALUE> {
    * @param index - The index to access
    * @returns The value at the index or undefined
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const list = new List([10, 20, 30]);
@@ -217,6 +229,8 @@ export class List<VALUE> implements Iterable<VALUE> {
 
   /**
    * Gets the current length of the list.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -233,6 +247,8 @@ export class List<VALUE> implements Iterable<VALUE> {
   /**
    * Returns an iterator for the list values.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const list = new List([1, 2, 3]);
@@ -246,6 +262,8 @@ export class List<VALUE> implements Iterable<VALUE> {
   }
   /**
    * Makes the list iterable.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript

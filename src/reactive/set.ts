@@ -6,6 +6,8 @@ import { Stream } from "../stream.ts";
  *
  * @template VALUE - The type of values stored in the set
  *
+ * @see {@link Stream} - Complete copy-paste transformers library
+ *
  * @example
  * ```typescript
  * const activeUsers = new Set<string>();
@@ -33,6 +35,8 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
    * Adds a value to the set and emits the value to listeners.
    * Only emits if the value is actually added (not a duplicate).
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const tags = new Set<string>();
@@ -47,6 +51,8 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
   /**
    * Deletes a value from the set and emits the value to listeners.
    * Only emits if the value was actually deleted (existed in set).
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
@@ -63,6 +69,8 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
    * Clears all values from the set and emits to listeners.
    * Only emits if the set was not already empty.
    *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
    * @example
    * ```typescript
    * const cache = new Set([1, 2, 3]);
@@ -78,6 +86,8 @@ export class Set<VALUE> extends globalThis.Set<VALUE> {
    * Creates a new reactive Set.
    *
    * @param values - Optional iterable of initial values
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
    *
    * @example
    * ```typescript
