@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@soffinal/stream)](https://bundlephobia.com/package/@soffinal/stream)
 
-> **A reactive streaming library with Adaptive Constraints**
+> **Enhanced event emitters with functional composition**
 
-A groundbreaking streaming library that introduces **Adaptive Reactive Programming** - where transformers maintain state and evolve their behavior based on stream history. Built with four universal primitives that compose into infinite possibilities.
+A modern event emitter that's multicast, awaitable, async iterable, async generable, and pipeable. Like EventEmitter but with functional transformations, perfect TypeScript inference, and copy-paste transformers embedded in JSDoc.
 
 ## Table of Contents
 
