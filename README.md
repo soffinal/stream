@@ -289,7 +289,7 @@ But more importantly: **Documentation-as-Distribution is actually Education-as-D
 
 #### The Educational Transparency Revolution
 
-Unlike traditional libraries where transformers are minified black boxes, our approach makes **every implementation pattern visible and learnable**:
+Our approach makes **every implementation pattern visible and learnable**:
 
 ```typescript
 // 📦 All transformers are copy-pastable from IntelliSense!
@@ -350,16 +350,6 @@ const rateLimited = <T>(maxPerSecond: number) =>
 ```
 
 #### Benefits Beyond Bundle Size
-
-**Traditional Libraries (Code-as-Distribution):**
-
-- ❌ **Black box implementations** - Minified, unreadable code
-- ❌ **Separate documentation** - Often outdated, disconnected from code
-- ❌ **Limited extensibility** - Users can only use what's provided
-- ❌ **Learning barrier** - No insight into implementation patterns
-- ❌ **Bundle bloat** - Every transformer adds runtime cost
-
-**Documentation-as-Distribution:**
 
 - ✅ **Zero friction** - Copy-paste ready transformers
 - ✅ **Perfect discoverability** - IntelliSense shows all available transformers
@@ -664,7 +654,3 @@ MIT © [Soffinal](https://github.com/soffinal)
 Contact: <smari.sofiane@gmail.com>
 
 ---
-
-<div align="center">
-  <strong>Pioneering Adaptive Reactive Programming</strong>
-</div>
