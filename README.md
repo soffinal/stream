@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@soffinal/stream)](https://bundlephobia.com/package/@soffinal/stream)
 
-> **A reactive streaming library with Adaptive Constraints**
+> **Enhanced event emitters with functional composition**
 
-A groundbreaking streaming library that introduces **Adaptive Reactive Programming** - where transformers maintain state and evolve their behavior based on stream history. Built with four universal primitives that compose into infinite possibilities.
+A modern event emitter that's multicast, awaitable, async iterable, async generable, and pipeable. Like EventEmitter but with functional transformations, perfect TypeScript inference, and copy-paste transformers embedded in JSDoc.
 
 ## Table of Contents
 
@@ -289,7 +289,7 @@ But more importantly: **Documentation-as-Distribution is actually Education-as-D
 
 #### The Educational Transparency Revolution
 
-Unlike traditional libraries where transformers are minified black boxes, our approach makes **every implementation pattern visible and learnable**:
+Our approach makes **every implementation pattern visible and learnable**:
 
 ```typescript
 // 📦 All transformers are copy-pastable from IntelliSense!
@@ -350,16 +350,6 @@ const rateLimited = <T>(maxPerSecond: number) =>
 ```
 
 #### Benefits Beyond Bundle Size
-
-**Traditional Libraries (Code-as-Distribution):**
-
-- ❌ **Black box implementations** - Minified, unreadable code
-- ❌ **Separate documentation** - Often outdated, disconnected from code
-- ❌ **Limited extensibility** - Users can only use what's provided
-- ❌ **Learning barrier** - No insight into implementation patterns
-- ❌ **Bundle bloat** - Every transformer adds runtime cost
-
-**Documentation-as-Distribution:**
 
 - ✅ **Zero friction** - Copy-paste ready transformers
 - ✅ **Perfect discoverability** - IntelliSense shows all available transformers
@@ -664,7 +654,3 @@ MIT © [Soffinal](https://github.com/soffinal)
 Contact: <smari.sofiane@gmail.com>
 
 ---
-
-<div align="center">
-  <strong>Pioneering Adaptive Reactive Programming</strong>
-</div>

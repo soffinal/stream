@@ -25,7 +25,7 @@ import { FunctionGenerator, Stream } from "../stream.ts";
  * const derivedState = new State(-1, filtered);
  * ```
  */
-export class State<VALUE> extends Stream<VALUE> {
+export class State<VALUE = unknown> extends Stream<VALUE> {
   protected _value: VALUE;
   constructor(initialValue: VALUE);
   constructor(initialValue: VALUE, stream: FunctionGenerator<VALUE> | Stream<VALUE>);
@@ -44,7 +44,7 @@ export class State<VALUE> extends Stream<VALUE> {
    * ```
    */
   constructor(initialValue: VALUE, stream?: FunctionGenerator<VALUE> | Stream<VALUE>) {
-    stream ? super(stream) : super();
+    super(stream!);
     this._value = initialValue;
   }
   /**

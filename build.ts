@@ -14,14 +14,4 @@ await Bun.build({
 // Build TypeScript declarations
 await Bun.$`bunx tsc --emitDeclarationOnly --allowImportingTsExtensions --noEmit false`;
 
-// Release functionality
-if (process.argv.includes("--release")) {
-  const pkg = await Bun.file("package.json").json();
-  const version = pkg.version;
-
-  await Bun.$`git add .`;
-  await Bun.$`git commit -m "Release v${version}"`;
-  await Bun.$`git tag v${version}`;
-}
-
 export {};
