@@ -2,35 +2,81 @@ import { Stream } from "../stream.ts";
 
 /**
  * Adaptive filter transformer that maintains state and can terminate streams.
+ * Supports multiple concurrency strategies for async predicates.
  *
  * @template VALUE - The type of values flowing through the stream
  * @template STATE - The type of the internal state object
+ * @template FILTERED - The type of filtered values (for type guards)
  *
- * @param initialState - Initial state object for the transformer
- * @param predicate - Function that determines if a value should pass through
- *   - Returns `[boolean, newState]` to continue with updated state
- *   - Returns `void` or `undefined` to terminate the stream
- *   - Can be async for complex filtering logic
+ * @param initialStateOrPredicate - Initial state object or predicate function
+ * @param statefulPredicateOrOptions - Stateful predicate function or options for simple predicates
  *
  * @returns A transformer function that can be used with `.pipe()`
  *
  * @see {@link Stream} - Complete copy-paste transformers library
  *
  * @example
- * // Simple filtering
- * stream.pipe(filter({}, (_, value) => [value > 0, {}]))
+ * // Simple synchronous filtering
+ * stream.pipe(filter((value) => value > 0))
  *
  * @example
- * // Async filtering
+ * // Type guard filtering (synchronous only)
+ * stream.pipe(filter((value): value is number => typeof value === "number"))
+ *
+ * @example
+ * // Async filtering with sequential strategy (default)
  * stream.pipe(
- *   filter({}, async (_, value) => {
- *     const valid = await validate(value);
- *     return [valid, {}];
+ *   filter(async (value) => {
+ *     const valid = await validateAsync(value);
+ *     return valid;
  *   })
  * )
  *
-
+ * @example
+ * // Async filtering with concurrent-unordered strategy
+ * stream.pipe(
+ *   filter(async (value) => {
+ *     const result = await expensiveCheck(value);
+ *     return result;
+ *   }, { strategy: "concurrent-unordered" })
+ * )
  *
+ * @example
+ * // Async filtering with concurrent-ordered strategy
+ * stream.pipe(
+ *   filter(async (value) => {
+ *     const result = await apiValidation(value);
+ *     return result;
+ *   }, { strategy: "concurrent-ordered" })
+ * )
+ *
+ * @example
+ * // Stateful filtering (always sequential)
+ * stream.pipe(
+ *   filter({ count: 0 }, (state, value) => {
+ *     if (state.count >= 10) return; // Terminate after 10 items
+ *     return [value > 0, { count: state.count + 1 }];
+ *   })
+ * )
+ *
+ * @example
+ * // Stateful filtering with complex state
+ * stream.pipe(
+ *   filter({ seen: new Set() }, (state, value) => {
+ *     if (state.seen.has(value)) return [false, state]; // Duplicate
+ *     state.seen.add(value);
+ *     return [true, state]; // First occurrence
+ *   })
+ * )
+ *
+ * @example
+ * // Stream termination
+ * stream.pipe(
+ *   filter(async (value) => {
+ *     if (value === "STOP") return; // Terminates stream
+ *     return value.length > 3;
+ *   })
+ * )
  */
 export const filter: filter.Filter = <
   VALUE,
@@ -41,14 +87,14 @@ export const filter: filter.Filter = <
   statefulPredicateOrOptions?:
     | filter.StatefulPredicate<VALUE, STATE>
     | filter.StatefulGuardPredicate<VALUE, STATE, FILTERED>
-    | filter.Options,
-  options?: filter.Options
+    | filter.Options
 ): ((stream: Stream<VALUE>) => Stream<FILTERED>) => {
   return (stream: Stream<VALUE>): Stream<FILTERED> => {
-    const { strategy = "sequential" } = options ?? {};
-
     if (!statefulPredicateOrOptions || typeof statefulPredicateOrOptions === "object") {
+      const { strategy = "sequential" } = statefulPredicateOrOptions ?? {};
+
       const predicate = initialStateOrPredicate as filter.Predicate<VALUE>;
+
       if (strategy === "sequential") {
         return new Stream<FILTERED>(async function* () {
           for await (const value of stream) {
@@ -59,7 +105,7 @@ export const filter: filter.Filter = <
         });
       }
 
-      if (strategy === "concurent-unordered") {
+      if (strategy === "concurrent-unordered") {
         return new Stream<FILTERED>(async function* () {
           const ABORT = Symbol.for("__abort");
 
@@ -68,7 +114,7 @@ export const filter: filter.Filter = <
 
           const abort = stream.listen(async (value) => {
             const result = await predicate(value);
-            if (result! === false) {
+            if (result !== false) {
               result === undefined ? queue.push(ABORT) : queue.push(value as FILTERED);
               resolver?.();
               resolver = undefined;
@@ -93,15 +139,19 @@ export const filter: filter.Filter = <
         });
       }
 
-      if (strategy === "concurent-ordered") {
+      if (strategy === "concurrent-ordered") {
         return new Stream<FILTERED>(async function* () {
           let queue = new Array<{ resultPromise: boolean | void | Promise<boolean | void>; value: VALUE }>();
           let resolver: Function | undefined;
 
           const abort = stream.listen((value) => {
-            queue.push({ resultPromise: predicate(value), value });
-            resolver?.();
-            resolver = undefined;
+            const pormise = predicate(value);
+            queue.push({ resultPromise: pormise, value });
+            (async () => {
+              await pormise;
+              resolver?.();
+              resolver = undefined;
+            })();
           });
 
           try {
@@ -126,53 +176,10 @@ export const filter: filter.Filter = <
 
     const predicate = statefulPredicateOrOptions as filter.StatefulGuardPredicate<VALUE, STATE>;
 
-    if (strategy === "concurent-unordered") {
-      return new Stream<FILTERED>(async function* () {
-        const ABORT = Symbol.for("__abort");
-        let currentState = initialStateOrPredicate as STATE;
-
-        let queue = new Array<VALUE | typeof ABORT>();
-        let resolver: Function | undefined;
-
-        const abort = stream.listen(async (value) => {
-          const result = await predicate(currentState, value);
-          if (result === undefined) {
-            queue.push(ABORT);
-          } else {
-            const [ok, state] = result;
-            currentState = state;
-            if (!ok) return;
-            queue.push(value);
-          }
-          resolver?.();
-          resolver = undefined;
-        });
-
-        try {
-          while (true) {
-            if (queue.length) {
-              const value = queue.shift()!;
-              if (value === ABORT) break;
-              yield value as FILTERED;
-            } else {
-              await new Promise<void>((r) => (resolver = r));
-            }
-          }
-        } finally {
-          queue.length = 0;
-          abort();
-          resolver = undefined;
-        }
-      });
-    }
-
     return new Stream<FILTERED>(async function* () {
       let currentState = initialStateOrPredicate as STATE;
       for await (const value of stream) {
-        const result = await (statefulPredicateOrOptions as filter.StatefulGuardPredicate<VALUE, STATE>)(
-          currentState,
-          value
-        );
+        const result = await predicate(currentState, value);
         if (!result) return;
         const [emit, state] = result;
         currentState = state;
@@ -185,7 +192,7 @@ export const filter: filter.Filter = <
 };
 
 export namespace filter {
-  export type Options = { strategy: "sequential" | "concurent-unordered" | "concurent-ordered" };
+  export type Options = { strategy: "sequential" | "concurrent-unordered" | "concurrent-ordered" };
   export type Predicate<VALUE = unknown> = (value: VALUE) => boolean | void | Promise<boolean | void>;
   export type GuardPredicate<VALUE = unknown, FILTERED extends VALUE = VALUE> = (value: VALUE) => value is FILTERED;
   export type StatefulPredicate<VALUE = unknown, STATE extends Record<string, unknown> = {}> = (
@@ -198,7 +205,7 @@ export namespace filter {
     FILTERED extends VALUE = VALUE
   > = (state: STATE, value: VALUE) => [boolean, STATE, FILTERED] | void | Promise<[boolean, STATE, FILTERED] | void>;
   export interface Filter {
-    <VALUE, FILTERED extends VALUE>(predicate: GuardPredicate<VALUE, FILTERED>, options?: Options): (
+    <VALUE, FILTERED extends VALUE = VALUE>(predicate: GuardPredicate<VALUE, FILTERED>): (
       stream: Stream<VALUE>
     ) => Stream<FILTERED>;
 
@@ -206,33 +213,12 @@ export namespace filter {
 
     <VALUE, STATE extends Record<string, unknown> = {}>(
       initialState: STATE,
-      predicate: StatefulPredicate<VALUE, STATE>,
-      options?: Options
+      predicate: StatefulPredicate<VALUE, STATE>
     ): (stream: Stream<VALUE>) => Stream<VALUE>;
 
     <VALUE, STATE extends Record<string, unknown> = {}, FILTERED extends VALUE = VALUE>(
       initialState: STATE,
-      predicate: StatefulGuardPredicate<VALUE, STATE, FILTERED>,
-      options?: Options
+      predicate: StatefulGuardPredicate<VALUE, STATE, FILTERED>
     ): (stream: Stream<VALUE>) => Stream<FILTERED>;
   }
 }
-
-const stream = new Stream<{ type: "add"; user: string } | { type: "delete" }>();
-
-const out = stream.pipe(
-  filter(async (v) => {
-    await new Promise((r) => setTimeout(r, Math.random() * 200));
-    return v.type === "delete";
-  })
-);
-
-out.listen(console.log);
-
-stream.push(
-  { type: "add", user: "dddd" },
-  { type: "delete" },
-  { type: "add", user: "dddd" },
-  { type: "delete" },
-  { type: "add", user: "dddd" }
-);

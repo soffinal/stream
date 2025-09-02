@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@soffinal/stream)](https://bundlephobia.com/package/@soffinal/stream)
 
-> **Enhanced event emitters with functional composition**
+> **Multicast Event Pipelines with functional composition**
 
-A modern event emitter that's multicast, awaitable, async iterable, async generable, and pipeable. Like EventEmitter but with functional transformations, perfect TypeScript inference, and copy-paste transformers embedded in JSDoc.
+Stream provides multicast event pipelines with functional composition capabilities. It supports both push-based events (`stream.push()`) and pull-based data sources (async generators for WebSockets, file readers, EventSource, etc.). Features include async operations, stateful transformations, and built-in concurrency control with complete TypeScript integration.
 
 ## Table of Contents
 
@@ -25,34 +25,69 @@ A modern event emitter that's multicast, awaitable, async iterable, async genera
 
 ## Features
 
-- 🧠 **Adaptive Constraints** - Transformers that learn and evolve based on stream history
-- 🔧 **Universal Primitives** - Four algebraic primitives: `filter`, `map`, `merge`, `flat`
-- 📚 **Documentation-as-Distribution** - Copy-paste transformers embedded in JSDoc, no separate packages needed
-- ⚡ **Async-First** - All operations support async with order preservation
-- 🔄 **Multicast Streams** - One stream, unlimited consumers
-- ⏳ **Awaitable** - `await stream` for next value
-- 🔁 **Async Iterable** - Native `for await` loop support
-- 🛠️ **Pipe Composition** - Functional transformer composition
-- 📊 **Reactive State** - Stateful values with automatic change propagation
-- 📋 **Reactive Collections** - Lists, Maps, Sets with fine-grained events
-- 🗑️ **Stream Termination** - Declarative stream lifecycle control
-- 📦 **Zero Dependencies** - Lightweight and tree-shakeable
-- 🌐 **Universal** - Node.js, browsers, Deno, Bun, Cloudflare Workers
-- 📘 **Full TypeScript** - Complete type safety without the burden
+- **Adaptive Constraints** - Transformers that learn and evolve based on stream history
+- **Universal Primitives** - Four primitives: `filter`, `map`, `merge`, `flat`
+- **Documentation-as-Distribution** - Copy-paste transformers embedded in JSDoc, no separate packages needed
+- **Async-First** - Native async/await support with configurable concurrency control
+- **Concurrency Strategies** - Sequential, concurrent-unordered, concurrent-ordered processing
+- **Multicast Streams** - One stream, unlimited consumers
+- **Awaitable** - `await stream` for next value
+- **Async Iterable** - Native `for await` loop support
+- **Pipe Composition** - Stream-to-stream functional composition
+- **Type Guards** - Built-in TypeScript type narrowing support
+- **Reactive State** - Stateful values with automatic change propagation
+- **Reactive Collections** - Lists, Maps, Sets with fine-grained events
+- **Stream Termination** - Declarative stream lifecycle control
+- **Zero Dependencies** - Lightweight and tree-shakeable
+- **Universal** - Node.js, browsers, Deno, Bun, Cloudflare Workers
+- **Full TypeScript** - Complete type safety without the burden
 
 ## Quick Start
 
 ```typescript
+import { Stream } from "@soffinal/stream";
+
+const events = new Stream<string>();
+
+events.listen(console.log);
+
+events.push("Hello"); //log: Hello
+```
+
+## Examples
+
+```typescript
 import { Stream, State, filter, map, merge } from "@soffinal/stream";
 
-// Create reactive streams
+// Create  streams
 const events = new Stream<string>();
 const numbers = new Stream<number>();
 
-// Pipe-based transformation with Adaptive Constraints
+// Pull-based stream from async generator
+const websocketStream = new Stream(async function* () {
+  const ws = new WebSocket("ws://localhost:8080");
+  while (ws.readyState === WebSocket.OPEN) {
+    yield await new Promise((resolve) => {
+      ws.onmessage = (event) => resolve(JSON.parse(event.data));
+    });
+  }
+});
+
+// Simple transformations
 const processed = events
-  .pipe(simpleFilter((msg) => msg.length > 3)) // Simple filtering
-  .pipe(simpleMap((msg) => msg.toUpperCase())); // Transform to uppercase
+  .pipe(filter((msg) => msg.length > 3)) // Simple filtering
+  .pipe(map((msg) => msg.toUpperCase())); // Transform to uppercase
+
+// Async transformations with concurrency
+const validated = events.pipe(
+  filter(
+    async (msg) => {
+      const isValid = await validateAsync(msg);
+      return isValid;
+    },
+    { strategy: "concurrent-ordered" }
+  ) // Parallel validation, ordered results
+);
 
 // Stateful transformers that learn and adapt
 const runningAverage = numbers
@@ -82,6 +117,7 @@ const delayed = processed.pipe(delay(100)); // Delay each value
 
 // Multiple consumers
 processed.listen((msg) => console.log("Processed:", msg));
+validated.listen((msg) => console.log("Validated:", msg));
 runningAverage.listen(({ value, average }) => console.log(`Value: ${value}, Running Average: ${average}`));
 
 // Reactive state
@@ -152,18 +188,18 @@ for await (const event of userEvents) {
 
 ### Pipe: Stream-to-Stream Composition
 
-The `pipe` method enforces reactive composition - it only accepts functions that return Stream instances, maintaining the infinite reactive pipeline:
+The `pipe` method enforces composition - it only accepts functions that return Stream instances, maintaining the infinite pipeline:
 
 ```typescript
 // All transformers return Streams - infinite chaining
-stream.pipe(filter({}, (_, v) => [v > 0, {}])); // → Stream<T>
-stream.pipe(map({}, (_, v) => [v.toString(), {}])); // → Stream<string>
+stream.pipe(filter((v) => v > 0)); // → Stream<T>
+stream.pipe(map((v) => v.toString())); // → Stream<string>
 stream.pipe(toState("initial")); // → State<string> (extends Stream)
 
 // Infinite chaining - every pipe returns a Stream
 const result = stream
-  .pipe(filter({}, (_, v) => [v > 0, {}]))
-  .pipe(map({}, (_, v) => [v * 2, {}]))
+  .pipe(filter((v) => v > 0))
+  .pipe(map((v) => v * 2))
   .pipe(take(5))
   .pipe(delay(100))
   .pipe(distinct()); // Always chainable
@@ -177,8 +213,8 @@ const result = stream
 const numbers = new Stream<number>();
 
 // TypeScript knows these are all Streams
-const doubled = numbers.pipe(map({}, (_, n) => [n * 2, {}])); // Stream<number>
-const strings = numbers.pipe(map({}, (_, n) => [n.toString(), {}])); // Stream<string>
+const doubled = numbers.pipe(map((n) => n * 2)); // Stream<number>
+const strings = numbers.pipe(map((n) => n.toString())); // Stream<string>
 const state = numbers.pipe(toState(0)); // State<number>
 ```
 
@@ -186,27 +222,33 @@ const state = numbers.pipe(toState(0)); // State<number>
 
 All stream operations are built from four universal primitives with **Adaptive Constraints**:
 
-#### 1. Filter - Adaptive Gatekeeper
+#### 1. Filter
 
 ```typescript
 import { filter } from "@soffinal/stream";
 
 // Simple filtering
-stream.pipe(filter({}, (_, value) => [value > 0, {}]));
+stream.pipe(filter((value) => value > 0));
+
+// Type guard filtering
+stream.pipe(filter((value): value is number => typeof value === "number"));
+
+// Async filtering with concurrency strategies
+stream.pipe(
+  filter(
+    async (value) => {
+      const isValid = await validateAsync(value);
+      return isValid;
+    },
+    { strategy: "concurrent-ordered" }
+  ) // Parallel validation, ordered results
+);
 
 // Stateful filtering with termination
 stream.pipe(
   filter({ count: 0 }, (state, value) => {
     if (state.count >= 10) return; // Terminate after 10 items
     return [value > 0, { count: state.count + 1 }];
-  })
-);
-
-// Async filtering
-stream.pipe(
-  filter({}, async (_, value) => {
-    const isValid = await validateAsync(value);
-    return [isValid, {}];
   })
 );
 ```
@@ -219,21 +261,27 @@ stream.pipe(
 import { map } from "@soffinal/stream";
 
 // Simple transformation
-stream.pipe(map({}, (_, value) => [value * 2, {}]));
+stream.pipe(map((value) => value * 2));
+
+// Type transformation
+stream.pipe(map((value: number) => value.toString()));
+
+// Async transformation with concurrency strategies
+stream.pipe(
+  map(
+    async (value) => {
+      const enriched = await enrichWithAPI(value);
+      return enriched;
+    },
+    { strategy: "concurrent-unordered" }
+  ) // Parallel processing, results as completed
+);
 
 // Stateful transformation with context
 stream.pipe(
   map({ sum: 0 }, (state, value) => {
     const newSum = state.sum + value;
     return [{ value, runningSum: newSum }, { sum: newSum }];
-  })
-);
-
-// Async transformation with order preservation
-stream.pipe(
-  map({}, async (_, value) => {
-    const enriched = await enrichWithAPI(value);
-    return [{ original: value, enriched }, {}];
   })
 );
 ```
@@ -273,10 +321,12 @@ const arrayStream = new Stream<number[]>();
 const individualNumbers = arrayStream.pipe(flat());
 
 arrayStream.push([1, 2, 3]); // Emits: 1, 2, 3 as separate events
+// Type: Stream<number>
 
 // Configurable depth flattening
 const deepArrays = new Stream<number[][][]>();
 const flattened = deepArrays.pipe(flat(2)); // Flatten 2 levels deep
+// Type: Stream<number>
 ```
 
 **[📖 Complete Flat Documentation →](src/transformers/flat.md)**
@@ -285,9 +335,7 @@ const flattened = deepArrays.pipe(flat(2)); // Flatten 2 levels deep
 
 No separate repos, no CLI tools, no package management - just copy-paste ready transformers embedded in JSDoc!
 
-But more importantly: **Documentation-as-Distribution is actually Education-as-Distribution.**
-
-#### The Educational Transparency Revolution
+#### The Educational Transparency
 
 Our approach makes **every implementation pattern visible and learnable**:
 
@@ -299,7 +347,6 @@ Our approach makes **every implementation pattern visible and learnable**:
 const searchInput = new Stream<string>(); // ← Hover here for full library
 const searchResults = searchInput
   .pipe(distinct()) // Copy from Stream JSDoc - learn deduplication patterns
-  .pipe(simpleFilter((q) => q.length > 2)) // Copy from Stream JSDoc - learn filtering logic
   .pipe(take(10)) // Copy from Stream JSDoc - learn termination patterns
   .pipe(delay(300)) // Copy from Stream JSDoc - learn async transformation
   .pipe(simpleMap((query) => searchAPI(query))); // Copy from Stream JSDoc - learn mapping patterns
@@ -383,8 +430,6 @@ Documentation-as-Distribution creates **multiplicative value**:
 
 - `take(n)`, `skip(n)`, `distinct()`, `tap(fn)` - Essential filtering patterns
 - `withIndex()`, `delay(ms)`, `pluck(key)`, `scan(fn, initial)` - Common transformation patterns
-- `simpleFilter(predicate)` - Convenient filtering without state
-- `simpleMap(fn)` - Convenient mapping without state
 - `toState(initialValue)` - Convert streams to reactive state
 - More transformers added with each release!
 
@@ -425,20 +470,20 @@ counter.value = 5;
 
 // State from transformed streams
 const source = new Stream<number>();
-const derivedState = new State(0, source.pipe(map({}, (_, v) => [v * 2, {}])));
+const derivedState = new State(0, source.pipe(map((v) => v * 2)));
 
 // Derived state using transformers
-const isLoggedIn = user.pipe(map({}, (_, u) => [u !== null, {}]));
+const isLoggedIn = user.pipe(map((u) => u !== null));
 
 const userDisplayName = user.pipe(
-  filter({}, (_, u) => [u !== null, {}]),
-  map({}, (_, u) => [`${u.firstName} ${u.lastName}`, {}])
+  filter((u) => u !== null),
+  map((u) => `${u.firstName} ${u.lastName}`)
 );
 
 // Convert streams to state with toState transformer
 const processedState = source
-  .pipe(filter({}, (_, v) => [v > 0, {}]))
-  .pipe(map({}, (_, v) => [v.toString(), {}]))
+  .pipe(filter((v) => v > 0))
+  .pipe(map((v) => v.toString()))
   .pipe(toState("0")); // Explicit initial value
 
 // Automatic UI updates
@@ -504,7 +549,7 @@ activeUsers.add("user1");
 
 - `push(...values: T[]): void` - Emit values to all listeners
 - `listen(callback: (value: T) => void, signal?: AbortSignal | Stream<any>): () => void` - Add listener, returns cleanup
-- `pipe<OUTPUT>(transformer: (stream: this) => OUTPUT): OUTPUT` - Apply any transformer (flexible return type)
+- `pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT` - Apply any transformer
 
 #### Async Interface
 
@@ -530,18 +575,21 @@ activeUsers.add("user1");
 
 ### Universal Transformers
 
-#### filter(initialState, accumulator)
+#### filter(predicate, options?)
 
-- **Simple**: `filter({}, (_, value) => [boolean, {}])`
-- **Stateful**: `filter(state, (state, value) => [boolean, newState])`
-- **Async**: `filter({}, async (_, value) => [boolean, {}])`
+- **Simple**: `filter((value) => boolean)`
+- **Type Guard**: `filter((value): value is Type => boolean)` (sync only)
+- **Async**: `filter(async (value) => boolean, { strategy? })` with concurrency options
+- **Stateful**: `filter(state, (state, value) => [boolean, newState])` (always sequential)
 - **Termination**: Return `undefined` to terminate stream
+- **Strategies**: `"sequential"` | `"concurrent-unordered"` | `"concurrent-ordered"`
 
-#### map(initialState, accumulator)
+#### map(mapper, options?)
 
-- **Simple**: `map({}, (_, value) => [newValue, {}])`
-- **Stateful**: `map(state, (state, value) => [newValue, newState])`
-- **Async**: `map({}, async (_, value) => [newValue, {}])`
+- **Simple**: `map((value) => newValue)`
+- **Async**: `map(async (value) => newValue, { strategy? })` with concurrency options
+- **Stateful**: `map(state, (state, value) => [newValue, newState])` (always sequential)
+- **Strategies**: `"sequential"` | `"concurrent-unordered"` | `"concurrent-ordered"`
 
 #### merge(...streams)
 
@@ -620,19 +668,10 @@ stream.push("hello");
 
 ### Transformer Guides
 
-- **[Filter Transformer →](src/transformers/filter.md)** - Adaptive constraints and stream termination
-- **[Map Transformer →](src/transformers/map.md)** - Stateful transformations and async processing
+- **[Filter Transformer →](src/transformers/filter.md)** - Concurrency strategies, type guards, stateful filtering, and stream termination
+- **[Map Transformer →](src/transformers/map.md)** - Concurrency strategies, type transformations, stateful mapping, and performance optimization
 - **[Merge Transformer →](src/transformers/merge.md)** - Stream orchestration and type-safe combination
 - **[Flat Transformer →](src/transformers/flat.md)** - Event multiplication and array flattening
-
-### Philosophy
-
-**Adaptive Reactive Programming** - A new paradigm where transformers maintain state and evolve their behavior based on stream history. This enables:
-
-- **Learning transformers** that adapt to data patterns
-- **Stateful operations** with memory between events
-- **Stream termination** for lifecycle control
-- **Zero-overhead types** with perfect inference
 
 ## Contributing
 

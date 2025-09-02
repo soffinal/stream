@@ -1,216 +1,430 @@
 # Map Transformer
 
-## The Adaptive Alchemist
+The `map` transformer transforms values flowing through a stream. It supports synchronous and asynchronous transformations, stateful operations, type conversions, and multiple concurrency strategies for optimal performance.
 
-Traditional mapping is a simple function application - transform input A to output B. But real-world transformation often requires **context, memory, and evolution**. The `map` transformer embodies **Adaptive Reactive Programming** - where the alchemist remembers previous transformations and evolves its craft.
-
-## Design
-
-### Why State-First Architecture?
+## Quick Start
 
 ```typescript
-map(initialState, (state, value) => [transformed, newState]);
+import { Stream, map } from "@soffinal/stream";
+
+const numbers = new Stream<number>();
+
+// Simple transformation
+const doubled = numbers.pipe(map((n) => n * 2));
+
+doubled.listen(console.log);
+numbers.push(1, 2, 3); // Outputs: 2, 4, 6
 ```
 
-**State comes first** because transformation is contextual. We don't transform values in isolation - we transform them based on what we've learned, what we've seen, and where we're going. The state is the accumulated knowledge; the value is just the raw material.
+## Basic Usage
 
-### The Dual Return Pattern
-
-```typescript
-return [transformedValue, newState]; // Transform and evolve
-```
-
-**Every transformation teaches us something.** The dual return forces us to consider: "How does this transformation change our understanding?" Even if the state doesn't change, we must consciously decide that.
-
-### Argument Order
+### Synchronous Transformations
 
 ```typescript
-(state, value) => // Context first, content second
-```
+// Number to string
+stream.pipe(map((n) => n.toString()));
 
-**Context shapes transformation.** A value of `5` might become `10` (double), `"5"` (stringify), or `{ count: 5, timestamp: now }` (enrich) - depending on the accumulated state. The transformer's history determines the value's destiny.
+// Object property extraction
+stream.pipe(map((user) => user.name));
 
-## The Adaptive Transformation System
-
-### Level 1: Simple Alchemy
-
-```typescript
-// Traditional transformation - no memory, no learning
-stream.pipe(map({}, (_, value) => [value * 2, {}]));
-```
-
-Even "simple" mapping uses the adaptive architecture. The empty state `{}` represents a state that doesn't need memory - but could develop it.
-
-### Level 2: Contextual Transformation
-
-```typescript
-// The alchemist remembers and enriches
+// Complex transformations
 stream.pipe(
-  map({ sum: 0, count: 0 }, (state, value) => {
+  map((data) => ({
+    id: data.id,
+    name: data.name.toUpperCase(),
+    timestamp: Date.now(),
+  }))
+);
+```
+
+### Type Transformations
+
+Map excels at converting between types with full TypeScript inference:
+
+```typescript
+const numbers = new Stream<number>();
+
+// number → string
+const strings = numbers.pipe(map((n) => n.toString()));
+
+// number → object
+const objects = numbers.pipe(
+  map((n) => ({
+    value: n,
+    squared: n * n,
+    isEven: n % 2 === 0,
+  }))
+);
+
+// Chained transformations
+const result = numbers
+  .pipe(map((n) => n * 2)) // number → number
+  .pipe(map((n) => n.toString())) // number → string
+  .pipe(map((s) => s.length)); // string → number
+```
+
+## Asynchronous Transformations
+
+### Sequential Processing (Default)
+
+```typescript
+const urls = new Stream<string>();
+
+const responses = urls.pipe(
+  map(async (url) => {
+    const response = await fetch(url);
+    return await response.json();
+  })
+);
+
+// Requests processed one at a time, maintaining order
+```
+
+### Concurrent Strategies
+
+For expensive async operations, choose a concurrency strategy:
+
+#### Concurrent Unordered
+
+Transformations run in parallel, results emit as they complete:
+
+```typescript
+const ids = new Stream<string>();
+
+const users = ids.pipe(
+  map(
+    async (id) => {
+      const user = await fetchUser(id);
+      return user;
+    },
+    { strategy: "concurrent-unordered" }
+  )
+);
+
+// Users emit as API calls complete, potentially out of order
+```
+
+#### Concurrent Ordered
+
+Parallel processing but maintains original order:
+
+```typescript
+const images = new Stream<string>();
+
+const processed = images.pipe(
+  map(
+    async (imageUrl) => {
+      const processed = await processImage(imageUrl);
+      return processed;
+    },
+    { strategy: "concurrent-ordered" }
+  )
+);
+
+// Images always emit in original order despite varying processing times
+```
+
+## Stateful Transformations
+
+Maintain state across transformations for complex operations:
+
+### Basic Stateful Mapping
+
+```typescript
+const numbers = new Stream<number>();
+
+// Running sum
+const runningSums = numbers.pipe(
+  map({ sum: 0 }, (state, value) => {
     const newSum = state.sum + value;
-    const newCount = state.count + 1;
-    const average = newSum / newCount;
+    return [newSum, { sum: newSum }];
+  })
+);
 
+numbers.push(1, 2, 3, 4);
+// Outputs: 1, 3, 6, 10
+```
+
+### Indexing and Counting
+
+```typescript
+const items = new Stream<string>();
+
+// Add indices
+const indexed = items.pipe(
+  map({ index: 0 }, (state, value) => {
+    const result = { item: value, index: state.index };
+    return [result, { index: state.index + 1 }];
+  })
+);
+
+items.push("a", "b", "c");
+// Outputs: {item: "a", index: 0}, {item: "b", index: 1}, {item: "c", index: 2}
+```
+
+### Complex State Management
+
+```typescript
+const events = new Stream<{ type: string; data: any }>();
+
+// Event aggregation with history
+const aggregated = events.pipe(
+  map(
+    {
+      counts: new Map<string, number>(),
+      history: [] as string[],
+      total: 0,
+    },
+    (state, event) => {
+      const newCounts = new Map(state.counts);
+      const currentCount = newCounts.get(event.type) || 0;
+      newCounts.set(event.type, currentCount + 1);
+
+      const newHistory = [...state.history, event.type].slice(-10); // Keep last 10
+      const newTotal = state.total + 1;
+
+      const result = {
+        event: event.type,
+        count: currentCount + 1,
+        totalEvents: newTotal,
+        recentHistory: newHistory,
+      };
+
+      return [
+        result,
+        {
+          counts: newCounts,
+          history: newHistory,
+          total: newTotal,
+        },
+      ];
+    }
+  )
+);
+```
+
+### Async Stateful Transformations
+
+```typescript
+const requests = new Stream<string>();
+
+// Caching with async operations
+const cached = requests.pipe(
+  map(
+    {
+      cache: new Map<string, any>(),
+    },
+    async (state, url) => {
+      // Check cache first
+      if (state.cache.has(url)) {
+        return [state.cache.get(url), state];
+      }
+
+      // Fetch and cache
+      const data = await fetch(url).then((r) => r.json());
+      const newCache = new Map(state.cache);
+      newCache.set(url, data);
+
+      return [data, { cache: newCache }];
+    }
+  )
+);
+```
+
+## Performance Considerations
+
+### When to Use Concurrency
+
+- **Sequential**: Default choice, maintains order, lowest overhead
+- **Concurrent-unordered**: Use when order doesn't matter and transformations are expensive
+- **Concurrent-ordered**: Use when order matters but transformations are expensive
+
+### Benchmarking Example
+
+```typescript
+const urls = Array.from({ length: 100 }, (_, i) => `https://api.example.com/item/${i}`);
+const stream = new Stream<string>();
+
+// Sequential: ~10 seconds (100ms per request)
+const sequential = stream.pipe(map(async (url) => await fetch(url)));
+
+// Concurrent-unordered: ~1 second (parallel requests)
+const concurrent = stream.pipe(
+  map(async (url) => await fetch(url), {
+    strategy: "concurrent-unordered",
+  })
+);
+```
+
+### Memory Management
+
+For stateful transformations, manage memory carefully:
+
+```typescript
+// Good: Bounded state
+map(
+  {
+    recentItems: [] as T[],
+    maxSize: 100,
+  },
+  (state, value) => {
+    const newItems = [...state.recentItems, value].slice(-state.maxSize);
     return [
-      { value, runningSum: newSum, runningAverage: average },
-      { sum: newSum, count: newCount },
+      processItems(newItems),
+      {
+        recentItems: newItems,
+        maxSize: state.maxSize,
+      },
     ];
+  }
+);
+
+// Avoid: Unbounded growth
+map({ history: [] }, (state, value) => {
+  // This grows indefinitely!
+  return [value, { history: [...state.history, value] }];
+});
+```
+
+## Error Handling
+
+Handle transformation errors gracefully:
+
+```typescript
+const stream = new Stream<string>();
+
+const safe = stream.pipe(
+  map(async (data) => {
+    try {
+      return await riskyTransformation(data);
+    } catch (error) {
+      console.error("Transformation failed:", error);
+      return { error: error.message, original: data };
+    }
   })
 );
 ```
 
-### Level 3: Evolutionary Transformation
+## Common Patterns
+
+### Enrichment
 
 ```typescript
-// The alchemist adapts its formula based on patterns
-stream.pipe(
-  map({ multiplier: 1, trend: "stable" }, (state, value) => {
-    // Adapt the transformation based on observed patterns
-    const newMultiplier = value > 100 ? state.multiplier * 1.1 : state.multiplier * 0.9;
-    const trend = newMultiplier > state.multiplier ? "growing" : "shrinking";
+const enrich = <T>(enrichFn: (item: T) => Promise<any>) =>
+  map(async (item: T) => {
+    const enrichment = await enrichFn(item);
+    return { ...item, ...enrichment };
+  });
 
-    return [value * newMultiplier, { multiplier: newMultiplier, trend }];
-  })
+users.pipe(
+  enrich(async (user) => ({
+    avatar: await getAvatar(user.id),
+    permissions: await getPermissions(user.role),
+  }))
 );
 ```
 
-**Adaptive transformation** - the formula itself evolves based on the data it processes.
-
-### Level 4: Async with Order Preservation
+### Batching
 
 ```typescript
-// The alchemist consults external sources while maintaining order
-stream.pipe(
-  map({ cache: new Map() }, async (state, value) => {
-    if (state.cache.has(value)) {
-      return [state.cache.get(value), state];
+const batch = <T>(size: number) =>
+  map<T, { buffer: T[] }, T[]>({ buffer: [] }, (state, value) => {
+    const newBuffer = [...state.buffer, value];
+
+    if (newBuffer.length >= size) {
+      return [newBuffer, { buffer: [] }];
     }
 
-    const enriched = await enrichWithAPI(value);
-    state.cache.set(value, enriched); // Learn for next time
-    return [enriched, state];
-  })
-);
+    return [null, { buffer: newBuffer }];
+  }).pipe(filter((batch) => batch !== null));
+
+stream.pipe(batch(5)); // Emit arrays of 5 items
 ```
 
-**Async transformation with memory** - the alchemist doesn't just transform, it **builds institutional knowledge** while preserving the natural order of events.
-
-## Essential Copy-Paste Transformers
-
-### simpleMap - Gateway to Adaptation
+### Debouncing with State
 
 ```typescript
-// For users transitioning from traditional mapping
-const simpleMap = <T, U>(fn: (value: T) => U | Promise<U>) =>
-  map<T, {}, U>({}, async (_, value) => {
-    const result = await fn(value);
-    return [result, {}];
+const debounce = <T>(ms: number) =>
+  map<T, { lastValue: T | null; timer: any }, T | null>(
+    {
+      lastValue: null,
+      timer: null,
+    },
+    (state, value) => {
+      if (state.timer) clearTimeout(state.timer);
+
+      const timer = setTimeout(() => {
+        // This would need additional mechanism to emit
+      }, ms);
+
+      return [null, { lastValue: value, timer }];
+    }
+  );
+```
+
+### Windowing
+
+```typescript
+const slidingWindow = <T>(size: number) =>
+  map<T, { window: T[] }, T[]>({ window: [] }, (state, value) => {
+    const newWindow = [...state.window, value].slice(-size);
+    return [newWindow, { window: newWindow }];
   });
 
-// Usage: familiar syntax, adaptive foundation
-stream.pipe(simpleMap((x) => x * 2));
-stream.pipe(simpleMap(async (user) => await enrichUser(user)));
+stream.pipe(slidingWindow(3)); // Always emit last 3 items
 ```
 
-**Design choice**: `simpleMap` is a **bridge**, not a replacement. It introduces users to the adaptive architecture while providing familiar syntax. The empty state `{}` is an invitation to evolution.
+## Advanced Patterns
 
-### withIndex - The Counting Alchemist
-
-```typescript
-const withIndex = <T>() =>
-  map<T, { index: number }, { value: T; index: number }>({ index: 0 }, (state, value) => [
-    { value, index: state.index },
-    { index: state.index + 1 },
-  ]);
-```
-
-`withIndex` demonstrates **sequential awareness** - the transformer knows its place in the stream's history and shares that knowledge.
-
-### delay - The Patient Alchemist
+### Conditional Transformation
 
 ```typescript
-const delay = <T>(ms: number) =>
-  map<T, {}, T>({}, async (_, value) => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    return [value, {}];
-  });
-```
+const conditionalMap = <T, U>(condition: (value: T) => boolean, transform: (value: T) => U) =>
+  map((value: T) => (condition(value) ? transform(value) : value));
 
-`delay` embodies **temporal transformation** - sometimes the most important transformation is time itself.
-
-### pluck - The Focused Alchemist
-
-```typescript
-const pluck = <T, K extends keyof T>(key: K) => map<T, {}, T[K]>({}, (_, value) => [value[key], {}]);
-```
-
-`pluck` demonstrates **selective transformation** - the alchemist knows exactly what it wants and ignores everything else.
-
-### tap - The Observer Gatekeeper
-
-```typescript
-const tap = <T>(fn: (value: T) => void | Promise<void>) =>
-  map<T, {}, T>({}, async (_, value) => {
-    await fn(value);
-    return [value, {}]; // Always pass through
-  });
-
-// Usage: Side effects without changing the stream
-stream.pipe(tap((value) => console.log("Saw:", value)));
-stream.pipe(tap(async (value) => await logToDatabase(value)));
-```
-
-### scan - The Accumulating Alchemist
-
-```typescript
-const scan = <T, U>(fn: (acc: U, value: T) => U, initial: U) =>
-  map<T, { acc: U }, U>({ acc: initial }, (state, value) => {
-    const newAcc = fn(state.acc, value);
-    return [newAcc, { acc: newAcc }];
-  });
-
-// Usage: Accumulate values over time
-stream.pipe(scan((sum, value) => sum + value, 0)); // Running sum
-stream.pipe(scan((max, value) => Math.max(max, value), -Infinity)); // Running max
-```
-
-`scan` demonstrates **accumulative transformation** - each value builds upon all previous values, creating a growing understanding.
-
-## The Order Preservation
-
-Async transformations maintain order because **sequence matters**. Even if transformation B completes before transformation A, the stream waits. This isn't just about correctness - it's about **respecting the narrative** of the data.
-
-```typescript
-// Order is preserved even with varying async delays
 stream.pipe(
-  map({}, async (_, value) => {
-    const delay = Math.random() * 1000; // Random processing time
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return [await processValue(value), {}];
-  })
+  conditionalMap(
+    (n) => n > 10,
+    (n) => n * 2
+  )
 );
 ```
 
-**Philosophy**: The stream is a story, and stories must be told in order.
+### Multi-step Processing
 
-## The State Evolution Pattern
+```typescript
+const pipeline = <T>(steps: Array<(value: any) => any>) =>
+  map((value: T) => steps.reduce((acc, step) => step(acc), value));
 
-State evolution follows a natural progression:
+stream.pipe(
+  pipeline([(x) => x.toString(), (x) => x.toUpperCase(), (x) => x.split(""), (x) => x.reverse(), (x) => x.join("")])
+);
+```
 
-1. **Empty State** `{}` - The transformer starts innocent
-2. **Simple State** `{ count: 0 }` - It learns to count
-3. **Rich State** `{ sum: 0, count: 0, average: 0 }` - It develops complex understanding
-4. **Intelligent State** `{ cache: Map, patterns: [], predictions: {} }` - It becomes wise
+## Type Signatures
 
-This mirrors how expertise develops in any field - from simple rules to nuanced understanding.
+```typescript
+// Simple mapper with optional concurrency
+map<VALUE, MAPPED>(
+  mapper: (value: VALUE) => MAPPED | Promise<MAPPED>,
+  options?: { strategy: "sequential" | "concurrent-unordered" | "concurrent-ordered" }
+): (stream: Stream<VALUE>) => Stream<MAPPED>
 
-## Conclusion
+// Stateful mapper (always sequential)
+map<VALUE, STATE, MAPPED>(
+  initialState: STATE,
+  mapper: (state: STATE, value: VALUE) => [MAPPED, STATE] | Promise<[MAPPED, STATE]>
+): (stream: Stream<VALUE>) => Stream<MAPPED>
+```
 
-The `map` transformer isn't just about changing values - it's about **intelligent transformation** that:
+## Best Practices
 
-- **Remembers** previous transformations (state)
-- **Learns** from patterns (adaptation)
-- **Evolves** its approach over time (constraints)
-- **Preserves** the narrative order (respect)
-- **Integrates** with reactive state (toState)
-- **Accumulates** knowledge over time (scan)
+1. **Choose the right strategy**: Use sequential for simple transformations, concurrent for expensive async operations
+2. **Manage state size**: Keep stateful transformation state bounded to prevent memory leaks
+3. **Handle errors gracefully**: Wrap risky transformations in try-catch blocks
+4. **Leverage TypeScript**: Use proper typing for better development experience and runtime safety
+5. **Consider performance**: Profile your transformations to choose optimal concurrency strategies
+6. **Compose transformations**: Chain multiple simple maps rather than one complex transformation
+7. **Use immutable updates**: Always return new state objects in stateful transformations
+
+The map transformer is the workhorse of stream processing, enabling powerful data transformations that scale from simple synchronous operations to complex stateful async processing with optimal performance characteristics.

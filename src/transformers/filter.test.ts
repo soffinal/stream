@@ -388,6 +388,149 @@ describe("filter transformer", () => {
     });
   });
 
+  describe("concurrency strategies", () => {
+    it("should handle simple predicate with sequential strategy", async () => {
+      const stream = new Stream<number>();
+      const filtered = stream.pipe(
+        filter(
+          async (value) => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return value > 2;
+          },
+          { strategy: "sequential" }
+        )
+      );
+
+      const results: number[] = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3, 4, 5);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(results).toEqual([3, 4, 5]);
+    });
+
+    it("should handle simple predicate with concurrent-unordered strategy", async () => {
+      const stream = new Stream<number>();
+      const delays = [30, 10, 20, 5, 15];
+      let callIndex = 0;
+
+      const filtered = stream.pipe(
+        filter(
+          async (value) => {
+            const delay = delays[callIndex++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return value > 2;
+          },
+          { strategy: "concurrent-unordered" }
+        )
+      );
+
+      const results: number[] = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3, 4, 5);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      // Results may be out of order due to different delays
+      expect(results).not.toEqual([3, 4, 5]); // Should be reordered
+      expect(results.sort()).toEqual([3, 4, 5]);
+    });
+
+    it("should handle simple predicate with concurrent-ordered strategy", async () => {
+      const stream = new Stream<number>();
+      const delays = [30, 10, 20, 5, 15];
+      let callIndex = 0;
+
+      const filtered = stream.pipe(
+        filter(
+          async (value) => {
+            const delay = delays[callIndex++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return value > 2;
+          },
+          { strategy: "concurrent-ordered" }
+        )
+      );
+
+      const results: number[] = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3, 4, 5);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Results should maintain original order despite different delays
+      expect(results).toEqual([3, 4, 5]);
+    });
+
+    it("should handle type guard predicates (synchronous only)", async () => {
+      const stream = new Stream<number | string>();
+      const filtered = stream.pipe(filter((value): value is number => typeof value === "number"));
+
+      const results: number[] = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push(1, "hello", 2, "world", 3);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(results).toEqual([1, 2, 3]);
+    });
+
+    it("should handle stream termination with concurrent strategies", async () => {
+      const stream = new Stream<number>();
+      let processedCount = 0;
+
+      const filtered = stream.pipe(
+        filter(
+          async (value) => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            processedCount++;
+            if (processedCount >= 3) return; // Terminate after 3 items
+            return value > 0;
+          },
+          { strategy: "concurrent-unordered" }
+        )
+      );
+
+      const results: number[] = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3, 4, 5);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(results).toHaveLength(2); // Only first 2 positive values
+      expect(results.sort()).toEqual([1, 2]);
+    });
+
+    it("should handle complex async validation with ordered concurrency", async () => {
+      const stream = new Stream<{ id: number; value: string }>();
+
+      const filtered = stream.pipe(
+        filter(
+          async (item) => {
+            // Simulate API validation with varying delays
+            const delay = Math.random() * 20;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return item.value.length > 3;
+          },
+          { strategy: "concurrent-ordered" }
+        )
+      );
+
+      const results: Array<{ id: number; value: string }> = [];
+      filtered.listen((value) => results.push(value));
+
+      stream.push({ id: 1, value: "hi" }, { id: 2, value: "hello" }, { id: 3, value: "ok" }, { id: 4, value: "world" });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(results).toHaveLength(2);
+      expect(results[0].id).toBe(2);
+      expect(results[1].id).toBe(4);
+      expect(results[0].value).toBe("hello");
+      expect(results[1].value).toBe("world");
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle null and undefined values", async () => {
       const stream = new Stream<number | null | undefined>();

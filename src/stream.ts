@@ -1,5 +1,3 @@
-export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
 /**
  * A reactive streaming library that provides async-first data structures with built-in event streams.
  *
@@ -32,11 +30,6 @@ export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
  * // 📦 COPY-PASTE TRANSFORMERS LIBRARY - Essential transformers for immediate use
  *
  * // FILTERING TRANSFORMERS
- * const simpleFilter = <T>(predicate: (value: T) => boolean | Promise<boolean>) =>
- *   filter<T, {}>({}, async (_, value) => {
- *     const shouldPass = await predicate(value);
- *     return [shouldPass, {}];
- *   });
  *
  * const take = <T>(n: number) =>
  *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
@@ -58,11 +51,6 @@ export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
  *   });
  *
  * // MAPPING TRANSFORMERS
- * const simpleMap = <T, U>(fn: (value: T) => U | Promise<U>) =>
- *   map<T, {}, U>({}, async (_, value) => {
- *     const result = await fn(value);
- *     return [result, {}];
- *   });
  *
  * const withIndex = <T>() =>
  *   map<T, { index: number }, { value: T; index: number }>(
@@ -94,7 +82,7 @@ export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   protected _listeners: Set<(value: VALUE) => void> = new Set<(value: VALUE) => void>();
-  protected _generatorFn: FunctionGenerator<VALUE> | undefined;
+  protected _generatorFn: Stream.FunctionGenerator<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
   protected _listenerRemoved: Stream<void> | undefined;
@@ -134,8 +122,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * ```
    */
   constructor();
-  constructor(stream: FunctionGenerator<VALUE> | Stream<VALUE>);
-  constructor(stream?: FunctionGenerator<VALUE> | Stream<VALUE>) {
+  constructor(stream: Stream.FunctionGenerator<VALUE> | Stream<VALUE>);
+  constructor(stream?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
     this._generatorFn = stream instanceof Stream ? () => stream[Symbol.asyncIterator]() : stream;
   }
 
@@ -374,4 +362,9 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT {
     return transformer(this);
   }
+}
+
+export namespace Stream {
+  export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
+  export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
 }

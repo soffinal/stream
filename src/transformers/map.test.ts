@@ -361,6 +361,136 @@ describe("map transformer", () => {
     });
   });
 
+  describe("concurrency strategies", () => {
+    it("should handle simple mapper with sequential strategy", async () => {
+      const stream = new Stream<number>();
+      const mapped = stream.pipe(
+        map(
+          async (x) => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return x * 2;
+          },
+          { strategy: "sequential" }
+        )
+      );
+
+      const results: number[] = [];
+      mapped.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(results).toEqual([2, 4, 6]);
+    });
+
+    it("should handle simple mapper with concurrent-unordered strategy", async () => {
+      const stream = new Stream<number>();
+      const delays = [30, 10, 20];
+      let callIndex = 0;
+
+      const mapped = stream.pipe(
+        map(
+          async (x) => {
+            const delay = delays[callIndex++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return x * 2;
+          },
+          { strategy: "concurrent-unordered" }
+        )
+      );
+
+      const results: number[] = [];
+      mapped.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Results may be out of order due to different delays
+      expect(results).not.toEqual([2, 4, 6]); // Should be reordered
+      expect(results.sort()).toEqual([2, 4, 6]);
+    });
+
+    it("should handle simple mapper with concurrent-ordered strategy", async () => {
+      const stream = new Stream<number>();
+      const delays = [30, 10, 20];
+      let callIndex = 0;
+
+      const mapped = stream.pipe(
+        map(
+          async (x) => {
+            const delay = delays[callIndex++];
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return x * 2;
+          },
+          { strategy: "concurrent-ordered" }
+        )
+      );
+
+      const results: number[] = [];
+      mapped.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Results should maintain original order despite different delays
+      expect(results).toEqual([2, 4, 6]);
+    });
+
+    it("should handle type transformations with concurrency", async () => {
+      const stream = new Stream<number>();
+      const mapped = stream.pipe(
+        map(
+          async (x: number) => {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return x.toString();
+          },
+          { strategy: "concurrent-unordered" }
+        )
+      );
+
+      const results: string[] = [];
+      mapped.listen((value) => results.push(value));
+
+      stream.push(1, 2, 3);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(results.sort()).toEqual(["1", "2", "3"]);
+    });
+
+    it("should handle complex async transformations with ordered concurrency", async () => {
+      const stream = new Stream<number>();
+      const mapped = stream.pipe(
+        map(
+          async (x: number) => {
+            // Simulate API call with varying delays
+            const delay = Math.random() * 20;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return {
+              original: x,
+              doubled: x * 2,
+              timestamp: Date.now(),
+            };
+          },
+          { strategy: "concurrent-ordered" }
+        )
+      );
+
+      const results: Array<{ original: number; doubled: number; timestamp: number }> = [];
+      mapped.listen((value) => results.push(value));
+
+      stream.push(5, 10, 15);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(results).toHaveLength(3);
+      expect(results[0].original).toBe(5);
+      expect(results[1].original).toBe(10);
+      expect(results[2].original).toBe(15);
+      expect(results[0].doubled).toBe(10);
+      expect(results[1].doubled).toBe(20);
+      expect(results[2].doubled).toBe(30);
+    });
+  });
+
   describe("New Pipe Enhancement", () => {
     it("should work with State constructor integration", async () => {
       const source = new Stream<number>();
