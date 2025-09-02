@@ -1,4 +1,4 @@
-import { FunctionGenerator, Stream } from "../stream.ts";
+import { Stream } from "../stream.ts";
 
 /**
  * A reactive state container that extends Stream to provide stateful value management.
@@ -28,7 +28,7 @@ import { FunctionGenerator, Stream } from "../stream.ts";
 export class State<VALUE = unknown> extends Stream<VALUE> {
   protected _value: VALUE;
   constructor(initialValue: VALUE);
-  constructor(initialValue: VALUE, stream: FunctionGenerator<VALUE> | Stream<VALUE>);
+  constructor(initialValue: VALUE, stream: Stream.FunctionGenerator<VALUE> | Stream<VALUE>);
   /**
    * Creates a new State with an initial value.
    *
@@ -43,7 +43,7 @@ export class State<VALUE = unknown> extends Stream<VALUE> {
    * const user = new State<User | null>(null);
    * ```
    */
-  constructor(initialValue: VALUE, stream?: FunctionGenerator<VALUE> | Stream<VALUE>) {
+  constructor(initialValue: VALUE, stream?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
     super(stream!);
     this._value = initialValue;
   }

@@ -1,7 +1,5 @@
 import { Stream } from "../stream.ts";
 
-type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-
 /**
  * Merge multiple streams into a single stream with temporal ordering.
  * 
@@ -34,11 +32,11 @@ type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
  */
 export function merge<VALUE, STREAMS extends [Stream<any>, ...Stream<any>[]]>(
   ...streams: STREAMS
-): (stream: Stream<VALUE>) => Stream<VALUE | ValueOf<STREAMS[number]>> {
-  return (stream: Stream<VALUE>): Stream<VALUE | ValueOf<STREAMS[number]>> =>
-    new Stream<VALUE | ValueOf<STREAMS[number]>>(async function* () {
+): (stream: Stream<VALUE>) => Stream<VALUE | Stream.ValueOf<STREAMS[number]>> {
+  return (stream: Stream<VALUE>): Stream<VALUE | Stream.ValueOf<STREAMS[number]>> =>
+    new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>(async function* () {
       const allStreams = [stream, ...streams];
-      const queue: (VALUE | ValueOf<STREAMS[number]>)[] = [];
+      const queue: (VALUE | Stream.ValueOf<STREAMS[number]>)[] = [];
       let resolver: Function | undefined;
 
       const cleanups = allStreams.map((s) =>

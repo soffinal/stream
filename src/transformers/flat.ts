@@ -1,5 +1,4 @@
 import { Stream } from "../stream.ts";
-import { map } from "./map.ts";
 
 /**
  * Flatten arrays in a stream, converting 1 array event into N individual events.
