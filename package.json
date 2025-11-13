@@ -1,8 +1,8 @@
 {
   "name": "@soffinal/stream",
   "module": "./dist/index.js",
-  "version": "0.2.3",
-  "description": "Multicast Event Pipelines with functional composition for TypeScript/JavaScript",
+  "version": "0.2.4",
+  "description": "Type-safe event emitters that scale",
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest"
