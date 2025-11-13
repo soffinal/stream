@@ -264,7 +264,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * // When element is removed and GC'd, iteration stops automatically
    * ```
    */
-  async *withContext(context: object) {
+  async *withContext(context: object): AsyncGenerator<VALUE, void> {
     const ref = new WeakRef(context);
     try {
       for await (const value of this) {
