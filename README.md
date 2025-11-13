@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@soffinal/stream)](https://bundlephobia.com/package/@soffinal/stream)
 
-> **Multicast Event Pipelines with functional composition**
+> **Type-safe event emitters that scale**
 
-Stream provides multicast event pipelines with functional composition capabilities. It supports both push-based events (`stream.push()`) and pull-based data sources (async generators for WebSockets, file readers, EventSource, etc.). Features include async operations, stateful transformations, and built-in concurrency control with complete TypeScript integration.
+Stream is like EventEmitter, but better. Send events to multiple listeners, transform data with `filter` and `map`, and never worry about memory leaks. Works with DOM elements, WebSockets, user interactions, or any async data source. Fully typed, zero dependencies, 5.5KB.
 
 ## Table of Contents
 
@@ -30,6 +30,7 @@ Stream provides multicast event pipelines with functional composition capabiliti
 - **Documentation-as-Distribution** - Copy-paste transformers embedded in JSDoc, no separate packages needed
 - **Async-First** - Native async/await support with configurable concurrency control
 - **Concurrency Strategies** - Sequential, concurrent-unordered, concurrent-ordered processing
+- **Automatic Cleanup** - WeakRef-based listener cleanup prevents memory leaks
 - **Multicast Streams** - One stream, unlimited consumers
 - **Awaitable** - `await stream` for next value
 - **Async Iterable** - Native `for await` loop support
@@ -110,6 +111,12 @@ const runningAverage = numbers
     })
   );
 
+// Automatic cleanup with DOM elements
+const element = document.createElement('div');
+events.listen(value => {
+  element.textContent = value;
+}, element); // Auto-removed when element is GC'd
+
 // Copy-paste transformers from JSDoc
 const limited = numbers.pipe(take(5)); // Limit to 5 items
 const indexed = events.pipe(withIndex()); // Add indices
@@ -184,6 +191,55 @@ for await (const event of userEvents) {
   if (event.type === "critical") break;
   processEvent(event);
 }
+```
+
+### Automatic Listener Cleanup
+
+Stream provides three cleanup mechanisms to prevent memory leaks:
+
+```typescript
+const stream = new Stream<string>();
+
+// 1. Manual cleanup
+const cleanup = stream.listen(value => console.log(value));
+cleanup(); // Remove listener
+
+// 2. AbortSignal cleanup
+const controller = new AbortController();
+stream.listen(value => console.log(value), controller.signal);
+controller.abort(); // Remove listener
+
+// 3. WeakRef automatic cleanup (NEW!)
+const element = document.createElement('div');
+stream.listen(value => {
+  element.textContent = value;
+}, element);
+// Listener automatically removed when element is garbage collected
+// Perfect for DOM elements, components, and temporary objects
+```
+
+**WeakRef Benefits:**
+- Zero memory leaks with DOM elements
+- No manual cleanup needed
+- Works with any object (components, instances, etc.)
+- Leverages JavaScript's garbage collector
+- Ideal for UI frameworks (React, Vue, Svelte, etc.)
+
+```typescript
+// Real-world example: Component lifecycle
+function createComponent() {
+  const element = document.createElement('div');
+  const dataStream = new Stream<Data>();
+  
+  // Auto-cleanup when component unmounts
+  dataStream.listen(data => {
+    element.innerHTML = renderTemplate(data);
+  }, element);
+  
+  return element;
+}
+
+// When element is removed from DOM and GC'd, listener is automatically cleaned up
 ```
 
 ### Pipe: Stream-to-Stream Composition
@@ -547,9 +603,10 @@ activeUsers.add("user1");
 
 #### Core Methods
 
-- `push(...values: T[]): void` - Emit values to all listeners
-- `listen(callback: (value: T) => void, signal?: AbortSignal | Stream<any>): () => void` - Add listener, returns cleanup
+- `push(...values: T[]): void` - Emit values to all listeners (auto-removes GC'd listeners)
+- `listen(callback: (value: T) => void, context?: AbortSignal | Stream<any> | object): () => void` - Add listener with optional cleanup
 - `pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT` - Apply any transformer
+- `withContext(context: object): AsyncIterator<T>` - Async iterator bound to context lifetime
 
 #### Async Interface
 
@@ -637,10 +694,11 @@ activeUsers.add("user1");
 - **Fast startup** - Zero dependencies, instant initialization
 - **Efficient pipelines** - Optimized transformer composition
 - **Memory bounded** - Built-in backpressure handling
+- **Automatic cleanup** - WeakRef prevents memory leaks
 
 ## Runtime Support
 
-- **Modern browsers** supporting ES2020+
+- **Modern browsers** supporting ES2020+ (WeakRef support)
 - **Node.js** 16+
 - **Deno** 1.0+
 - **Bun** 1.0+

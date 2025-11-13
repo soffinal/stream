@@ -78,10 +78,10 @@
  *   return new State(initialValue, stream);
  * };
  *
- * // Usage: stream.pipe(simpleFilter(x => x > 0)).pipe(take(5)).pipe(toState(0));
+ * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(toState(0));
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
-  protected _listeners: Set<(value: VALUE) => void> = new Set<(value: VALUE) => void>();
+  protected _listeners: Map<(value: VALUE) => void, WeakRef<object> | undefined> = new Map();
   protected _generatorFn: Stream.FunctionGenerator<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
@@ -208,6 +208,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
 
   /**
    * Pushes one or more values to all listeners.
+   * Automatically removes listeners whose context objects have been garbage collected.
    *
    * @see {@link Stream} - Complete copy-paste transformers library
    *
@@ -225,18 +226,64 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    */
   push(value: VALUE, ...values: VALUE[]): void {
     values.unshift(value);
+    const deadListeners = [];
     for (const value of values) {
-      for (const listener of this._listeners) {
+      for (const [listener, ctx] of this._listeners) {
+        if (ctx && !ctx.deref()) {
+          deadListeners.push(listener);
+          continue;
+        }
         listener(value);
       }
+    }
+    for (const listener of deadListeners) {
+      this._listeners.delete(listener);
     }
   }
 
   /**
-   * Adds a listener to the stream.
+   * Creates an async iterator bound to a context object's lifetime.
+   * Automatically stops iteration when the context is garbage collected.
+   *
+   * @param context - Object whose lifetime controls the iteration
+   * @returns Async generator that stops when context is GC'd
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
+   * @example
+   * ```typescript
+   * const stream = new Stream<number>();
+   * const element = document.createElement('div');
+   *
+   * (async () => {
+   *   for await (const value of stream.withContext(element)) {
+   *     element.textContent = String(value);
+   *   }
+   * })();
+   *
+   * // When element is removed and GC'd, iteration stops automatically
+   * ```
+   */
+  async *withContext(context: object) {
+    const ref = new WeakRef(context);
+    try {
+      for await (const value of this) {
+        if (!ref.deref()) break;
+        yield value;
+      }
+    } finally {
+      return;
+    }
+  }
+
+  /**
+   * Adds a listener to the stream with optional automatic cleanup.
    *
    * @param listener - Function to call when values are pushed
-   * @param signal - Optional AbortSignal for cleanup
+   * @param signalOrStreamOrContext - Optional cleanup mechanism:
+   *   - AbortSignal: Remove listener when signal is aborted
+   *   - Stream: Remove listener when stream emits
+   *   - Object: Remove listener when object is garbage collected (WeakRef)
    * @returns Cleanup function to remove the listener
    *
    * @see {@link Stream} - Complete copy-paste transformers library
@@ -253,23 +300,40 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * stream.listen(value => console.log(value), controller.signal);
    * controller.abort(); // Removes listener
    *
+   * // With Stream
+   * const stopSignal = new Stream<void>();
+   * stream.listen(value => console.log(value), stopSignal);
+   * stopSignal.push(); // Removes listener
+   *
+   * // With DOM element (auto-cleanup when GC'd)
+   * const element = document.createElement('div');
+   * stream.listen(value => element.textContent = value, element);
+   * // Listener automatically removed when element is garbage collected
+   *
    * // Manual cleanup
    * cleanup();
    * ```
    */
-  listen(listener: (value: VALUE) => void, signal?: AbortSignal | Stream<any>): () => void {
+  listen(listener: (value: VALUE) => void): () => void;
+  listen(listener: (value: VALUE) => void, signal: AbortSignal): () => void;
+  listen(listener: (value: VALUE) => void, stream: Stream<any>): () => void;
+  listen(listener: (value: VALUE) => void, context: object): () => void;
+  listen(listener: (value: VALUE) => void, signalOrStreamOrContext?: AbortSignal | Stream<any> | object): () => void {
     const self = this;
     let signalAbort: Function | undefined;
+    let context: WeakRef<object> | undefined;
 
-    if (signal instanceof AbortSignal) {
-      if (signal?.aborted) return () => {};
-      signal?.addEventListener("abort", abort);
-      signalAbort = () => signal?.removeEventListener("abort", abort);
-    } else {
-      signalAbort = signal?.listen(abort);
+    if (signalOrStreamOrContext instanceof AbortSignal) {
+      if (signalOrStreamOrContext?.aborted) return () => {};
+      signalOrStreamOrContext?.addEventListener("abort", abort);
+      signalAbort = () => signalOrStreamOrContext?.removeEventListener("abort", abort);
+    } else if (signalOrStreamOrContext instanceof Stream) {
+      signalAbort = signalOrStreamOrContext?.listen(abort);
+    } else if (signalOrStreamOrContext) {
+      context = new WeakRef(signalOrStreamOrContext);
     }
 
-    self._listeners.add(listener);
+    self._listeners.set(listener, context);
 
     self._listenerAdded?.push();
 
@@ -290,6 +354,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
         self._generator = undefined;
       }
       signalAbort?.();
+      signalAbort = undefined;
+      context = undefined;
     }
   }
 
