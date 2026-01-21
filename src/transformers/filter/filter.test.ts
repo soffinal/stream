@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { Stream } from "../stream";
+import { Stream } from "../../stream";
 import { filter } from "./filter";
 
 describe("filter transformer", () => {
@@ -80,7 +80,7 @@ describe("filter transformer", () => {
         filter({ count: 0 }, (state, value) => [
           state.count < 3, // Only allow first 3 items
           { count: state.count + 1 },
-        ])
+        ]),
       );
 
       const results: number[] = [];
@@ -102,7 +102,7 @@ describe("filter transformer", () => {
             newSum <= 10, // Only allow while sum <= 10
             { sum: newSum },
           ];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -130,7 +130,7 @@ describe("filter transformer", () => {
               uniqueCount: isNew ? state.uniqueCount + 1 : state.uniqueCount,
             },
           ];
-        })
+        }),
       );
 
       const results: string[] = [];
@@ -149,7 +149,7 @@ describe("filter transformer", () => {
         filter({ shouldPass: true }, (state, value) => [
           state.shouldPass,
           { shouldPass: !state.shouldPass }, // Alternate between true/false
-        ])
+        ]),
       );
 
       const results: number[] = [];
@@ -170,7 +170,7 @@ describe("filter transformer", () => {
         filter({}, async (state, value) => {
           await new Promise((resolve) => setTimeout(resolve, 1));
           return [value % 2 === 0, state];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -192,7 +192,7 @@ describe("filter transformer", () => {
           await new Promise((resolve) => setTimeout(resolve, delay));
 
           return [value > 2, { processed: state.processed + 1 }];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -217,7 +217,7 @@ describe("filter transformer", () => {
           newCache.set(value, isValid);
 
           return [isValid, { cache: newCache }];
-        })
+        }),
       );
 
       const results: string[] = [];
@@ -238,7 +238,7 @@ describe("filter transformer", () => {
         filter({ prev: null as number | null }, (state, value) => {
           const shouldPass = state.prev === null || value > state.prev;
           return [shouldPass, { prev: value }];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -264,7 +264,7 @@ describe("filter transformer", () => {
               delay: state.delay,
             },
           ];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -288,7 +288,7 @@ describe("filter transformer", () => {
           if (isNew) newSeen.add(value);
 
           return [isNew, { seen: newSeen }];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -311,7 +311,7 @@ describe("filter transformer", () => {
             throw new Error("Zero not allowed");
           }
           return [value > 0, state];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -333,7 +333,7 @@ describe("filter transformer", () => {
             throw new Error("Negative value");
           }
           return [value > 0, state];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -351,7 +351,7 @@ describe("filter transformer", () => {
     it("should handle large volumes of data", async () => {
       const stream = new Stream<number>();
       const filtered = stream.pipe(
-        filter({ processed: 0 }, (state, value) => [value % 2 === 0, { processed: state.processed + 1 }])
+        filter({ processed: 0 }, (state, value) => [value % 2 === 0, { processed: state.processed + 1 }]),
       );
 
       const results: number[] = [];
@@ -371,7 +371,7 @@ describe("filter transformer", () => {
     it("should handle rapid successive emissions", async () => {
       const stream = new Stream<number>();
       const filtered = stream.pipe(
-        filter({ count: 0 }, (state, value) => [state.count < 50, { count: state.count + 1 }])
+        filter({ count: 0 }, (state, value) => [state.count < 50, { count: state.count + 1 }]),
       );
 
       const results: number[] = [];
@@ -397,8 +397,8 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             return value > 2;
           },
-          { strategy: "sequential" }
-        )
+          { strategy: "sequential" },
+        ),
       );
 
       const results: number[] = [];
@@ -422,8 +422,8 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return value > 2;
           },
-          { strategy: "concurrent-unordered" }
-        )
+          { strategy: "concurrent-unordered" },
+        ),
       );
 
       const results: number[] = [];
@@ -449,8 +449,8 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return value > 2;
           },
-          { strategy: "concurrent-ordered" }
-        )
+          { strategy: "concurrent-ordered" },
+        ),
       );
 
       const results: number[] = [];
@@ -488,8 +488,8 @@ describe("filter transformer", () => {
             if (processedCount >= 3) return; // Terminate after 3 items
             return value > 0;
           },
-          { strategy: "concurrent-unordered" }
-        )
+          { strategy: "concurrent-unordered" },
+        ),
       );
 
       const results: number[] = [];
@@ -513,8 +513,8 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return item.value.length > 3;
           },
-          { strategy: "concurrent-ordered" }
-        )
+          { strategy: "concurrent-ordered" },
+        ),
       );
 
       const results: Array<{ id: number; value: string }> = [];
@@ -549,7 +549,7 @@ describe("filter transformer", () => {
     it("should handle complex object filtering", async () => {
       const stream = new Stream<{ id: number; active: boolean; score: number }>();
       const filtered = stream.pipe(
-        filter({ minScore: 50 }, (state, value) => [value.active && value.score >= state.minScore, state])
+        filter({ minScore: 50 }, (state, value) => [value.active && value.score >= state.minScore, state]),
       );
 
       const results: { id: number; active: boolean; score: number }[] = [];
@@ -559,7 +559,7 @@ describe("filter transformer", () => {
         { id: 1, active: true, score: 60 },
         { id: 2, active: false, score: 70 },
         { id: 3, active: true, score: 40 },
-        { id: 4, active: true, score: 80 }
+        { id: 4, active: true, score: 80 },
       );
 
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -578,7 +578,7 @@ describe("filter transformer", () => {
           const shouldPass = newHistory.length <= 3;
 
           return [shouldPass, { history: shouldPass ? newHistory : state.history }];
-        })
+        }),
       );
 
       const results: number[] = [];

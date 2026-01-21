@@ -1,9 +1,13 @@
 {
   "name": "@soffinal/stream",
+  "version": "0.3.0",
+  "author": "Soffinal <smari.sofiane@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soffinal/stream.git"
+  },
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "version": "0.2.4",
-  "description": "Type-safe event emitters that scale",
-  "type": "module",
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -16,6 +20,12 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "description": "Composable reactive primitives for TypeScript",
+  "files": [
+    "dist",
+    "src/transformers/*.md",
+    "README.md"
+  ],
   "keywords": [
     "reactive",
     "streams",
@@ -26,19 +36,7 @@
     "emitter",
     "adaptive constraints"
   ],
-  "author": "Soffinal <smari.sofiane@gmail.com>",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/soffinal/stream.git"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "src/transformers/*.md",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ]
+  "type": "module",
+  "types": "./dist/index.d.ts"
 }

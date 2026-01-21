@@ -314,17 +314,17 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * cleanup();
    * ```
    */
-  listen(listener: (value: VALUE) => void): () => void;
-  listen(listener: (value: VALUE) => void, signal: AbortSignal): () => void;
-  listen(listener: (value: VALUE) => void, stream: Stream<any>): () => void;
-  listen(listener: (value: VALUE) => void, context: object): () => void;
-  listen(listener: (value: VALUE) => void, signalOrStreamOrContext?: AbortSignal | Stream<any> | object): () => void {
+  listen(listener: (value: VALUE) => void): Stream.Abort;
+  listen(listener: (value: VALUE) => void, signal: AbortSignal): Stream.Abort;
+  listen(listener: (value: VALUE) => void, stream: Stream<any>): Stream.Abort;
+  listen(listener: (value: VALUE) => void, context: object): Stream.Abort;
+  listen(listener: (value: VALUE) => void, signalOrStreamOrContext?: AbortSignal | Stream<any> | object): Stream.Abort {
     const self = this;
     let signalAbort: Function | undefined;
     let context: WeakRef<object> | undefined;
 
     if (signalOrStreamOrContext instanceof AbortSignal) {
-      if (signalOrStreamOrContext?.aborted) return () => {};
+      if (signalOrStreamOrContext?.aborted) return abort;
       signalOrStreamOrContext?.addEventListener("abort", abort);
       signalAbort = () => signalOrStreamOrContext?.removeEventListener("abort", abort);
     } else if (signalOrStreamOrContext instanceof Stream) {
@@ -345,6 +345,9 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
         }
       })();
     }
+
+    abort[Symbol.dispose] = abort;
+
     return abort;
     function abort(): void {
       self._listeners.delete(listener);
@@ -425,12 +428,37 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * const stateResult = numbers.pipe(toState(0));
    * ```
    */
-  pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT {
+  pipe<OUTPUT extends Stream<any>>(transformer: Stream.Transformer<typeof this, OUTPUT>): OUTPUT {
     return transformer(this);
+  }
+  [Symbol.dispose](): void {
+    this.clear();
+  }
+  /**
+   * Removes all listeners from the stream.
+   *
+   * @see {@link Stream} - Complete copy-paste transformers library
+   *
+   * @example
+   * ```typescript
+   * const stream = new Stream<number>();
+   * stream.listen(value => console.log(value));
+   *
+   * console.log(stream.hasListeners); // true
+   * stream.clear();
+   * console.log(stream.hasListeners); // false
+   * ```
+   */
+  clear() {
+    this._listeners.clear();
+    this._listenerAdded?.clear();
+    this._listenerRemoved?.clear();
   }
 }
 
 export namespace Stream {
   export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
   export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
+  export type Abort = (() => void) & Disposable;
+  export type Transformer<T extends Stream<any>, U extends Stream<any>> = (stream: T) => U;
 }

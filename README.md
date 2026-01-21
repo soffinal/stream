@@ -3,45 +3,10 @@
 [![npm version](https://badge.fury.io/js/@soffinal%2Fstream.svg)](https://badge.fury.io/js/@soffinal%2Fstream)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Bundle Size](https://img.shields.io/bundlephobia/minzip/@soffinal/stream)](https://bundlephobia.com/package/@soffinal/stream)
 
-> **Type-safe event emitters that scale**
+> **Composable reactive primitives for TypeScript**
 
-Stream is like EventEmitter, but better. Send events to multiple listeners, transform data with `filter` and `map`, and never worry about memory leaks. Works with DOM elements, WebSockets, user interactions, or any async data source. Fully typed, zero dependencies, 5.5KB.
-
-## Table of Contents
-
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Core Concepts](#core-concepts)
-- [API Reference](#api-reference)
-- [Examples](#examples)
-- [Performance](#performance)
-- [Migration Guide](#migration-guide)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Features
-
-- **Adaptive Constraints** - Transformers that learn and evolve based on stream history
-- **Universal Primitives** - Four primitives: `filter`, `map`, `merge`, `flat`
-- **Documentation-as-Distribution** - Copy-paste transformers embedded in JSDoc, no separate packages needed
-- **Async-First** - Native async/await support with configurable concurrency control
-- **Concurrency Strategies** - Sequential, concurrent-unordered, concurrent-ordered processing
-- **Automatic Cleanup** - WeakRef-based listener cleanup prevents memory leaks
-- **Multicast Streams** - One stream, unlimited consumers
-- **Awaitable** - `await stream` for next value
-- **Async Iterable** - Native `for await` loop support
-- **Pipe Composition** - Stream-to-stream functional composition
-- **Type Guards** - Built-in TypeScript type narrowing support
-- **Reactive State** - Stateful values with automatic change propagation
-- **Reactive Collections** - Lists, Maps, Sets with fine-grained events
-- **Stream Termination** - Declarative stream lifecycle control
-- **Zero Dependencies** - Lightweight and tree-shakeable
-- **Universal** - Node.js, browsers, Deno, Bun, Cloudflare Workers
-- **Full TypeScript** - Complete type safety without the burden
+Minimal reactive streaming library: type-safe events, stateful transformations, async iteration, automatic cleanup.
 
 ## Quick Start
 
@@ -50,704 +15,237 @@ import { Stream } from "@soffinal/stream";
 
 const events = new Stream<string>();
 
-events.listen(console.log);
-
-events.push("Hello"); //log: Hello
-```
-
-## Examples
-
-```typescript
-import { Stream, State, filter, map, merge } from "@soffinal/stream";
-
-// Create  streams
-const events = new Stream<string>();
-const numbers = new Stream<number>();
-
-// Pull-based stream from async generator
-const websocketStream = new Stream(async function* () {
-  const ws = new WebSocket("ws://localhost:8080");
-  while (ws.readyState === WebSocket.OPEN) {
-    yield await new Promise((resolve) => {
-      ws.onmessage = (event) => resolve(JSON.parse(event.data));
-    });
-  }
-});
-
-// Simple transformations
-const processed = events
-  .pipe(filter((msg) => msg.length > 3)) // Simple filtering
-  .pipe(map((msg) => msg.toUpperCase())); // Transform to uppercase
-
-// Async transformations with concurrency
-const validated = events.pipe(
-  filter(
-    async (msg) => {
-      const isValid = await validateAsync(msg);
-      return isValid;
-    },
-    { strategy: "concurrent-ordered" }
-  ) // Parallel validation, ordered results
-);
-
-// Stateful transformers that learn and adapt
-const runningAverage = numbers
-  .pipe(
-    filter({ count: 0 }, (state, value) => {
-      // Only pass every 3rd number, terminate after 10
-      if (state.count >= 10) return; // Stream termination
-      return [(state.count + 1) % 3 === 0, { count: state.count + 1 }];
-    })
-  )
-  .pipe(
-    map({ sum: 0, count: 0 }, (state, value) => {
-      const newSum = state.sum + value;
-      const newCount = state.count + 1;
-      const average = newSum / newCount;
-      return [
-        { value, average },
-        { sum: newSum, count: newCount },
-      ];
-    })
-  );
-
-// Automatic cleanup with DOM elements
-const element = document.createElement('div');
-events.listen(value => {
-  element.textContent = value;
-}, element); // Auto-removed when element is GC'd
-
-// Copy-paste transformers from JSDoc
-const limited = numbers.pipe(take(5)); // Limit to 5 items
-const indexed = events.pipe(withIndex()); // Add indices
-const delayed = processed.pipe(delay(100)); // Delay each value
-
-// Multiple consumers
-processed.listen((msg) => console.log("Processed:", msg));
-validated.listen((msg) => console.log("Validated:", msg));
-runningAverage.listen(({ value, average }) => console.log(`Value: ${value}, Running Average: ${average}`));
-
-// Reactive state
-const counter = new State(0);
-counter.listen((count) => (document.title = `Count: ${count}`));
-counter.value++; // UI updates automatically
+events.listen((value) => console.log(value));
+events.push("Hello", "World");
+// Output: Hello, World
 ```
 
 ## Installation
 
-### Package Managers
-
 ```bash
-# npm
 npm install @soffinal/stream
-
-# yarn
-yarn add @soffinal/stream
-
-# pnpm
-pnpm add @soffinal/stream
-
-# bun
-bun add @soffinal/stream
-
-# Deno
-deno add jsr:@soffinal/stream
-```
-
-### CDN (Browser)
-
-```html
-<!-- Production (minified) -->
-<script type="module">
-  import { Stream, State } from "https://cdn.jsdelivr.net/npm/@soffinal/stream@latest/dist/index.js";
-</script>
-
-<!-- Alternative CDNs -->
-<script type="module">
-  import { Stream } from "https://esm.sh/@soffinal/stream";
-  import { Stream } from "https://cdn.skypack.dev/@soffinal/stream";
-</script>
 ```
 
 ## Core Concepts
 
-### Streams: Multicast Event Pipelines
-
-A `Stream` is a multicast, async iterable that pushes values to multiple listeners while being awaitable for the next value.
+### 1. Stream - Push & Pull
 
 ```typescript
-const userEvents = new Stream<UserEvent>();
+// Push: Emit values manually
+const stream = new Stream<number>();
+stream.listen((n) => console.log(n));
+stream.push(1, 2, 3);
 
-// Multiple consumers automatically share the same data
-userEvents.listen((event) => analytics.track(event));
-userEvents.listen((event) => notifications.send(event));
-userEvents.listen((event) => database.save(event));
+// Pull: Generate values from async source
+const countdown = new Stream(async function* () {
+  for (let i = 5; i > 0; i--) {
+    yield i;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+});
 
-// Await the next event
-const nextEvent = await userEvents;
+// Both: Push to a pull-based stream
+const messages = new Stream(async function* () {
+  const ws = new WebSocket("ws://localhost");
+  while (ws.readyState === WebSocket.OPEN) {
+    yield await new Promise(resolve => {
+      ws.onmessage = e => resolve(e.data);
+    });
+  }
+});
 
-// Async iteration
-for await (const event of userEvents) {
-  if (event.type === "critical") break;
-  processEvent(event);
-}
+messages.push("manual event"); // Can still push!
 ```
 
-### Automatic Listener Cleanup
-
-Stream provides three cleanup mechanisms to prevent memory leaks:
+### 2. Automatic Cleanup
 
 ```typescript
-const stream = new Stream<string>();
+// Disposable pattern
+using stream.listen(handler);
 
-// 1. Manual cleanup
-const cleanup = stream.listen(value => console.log(value));
-cleanup(); // Remove listener
+// Manual cleanup
+const cleanup = stream.listen(handler);
+cleanup();
 
-// 2. AbortSignal cleanup
-const controller = new AbortController();
-stream.listen(value => console.log(value), controller.signal);
-controller.abort(); // Remove listener
+// AbortSignal
+stream.listen(handler, controller.signal);
 
-// 3. WeakRef automatic cleanup (NEW!)
-const element = document.createElement('div');
-stream.listen(value => {
-  element.textContent = value;
-}, element);
-// Listener automatically removed when element is garbage collected
-// Perfect for DOM elements, components, and temporary objects
+// Stream as signal
+const stop = new Stream<void>();
+stream.listen(handler, stop);
+stop.push(); // Remove listener
 ```
 
-**WeakRef Benefits:**
-- Zero memory leaks with DOM elements
-- No manual cleanup needed
-- Works with any object (components, instances, etc.)
-- Leverages JavaScript's garbage collector
-- Ideal for UI frameworks (React, Vue, Svelte, etc.)
-
-```typescript
-// Real-world example: Component lifecycle
-function createComponent() {
-  const element = document.createElement('div');
-  const dataStream = new Stream<Data>();
-  
-  // Auto-cleanup when component unmounts
-  dataStream.listen(data => {
-    element.innerHTML = renderTemplate(data);
-  }, element);
-  
-  return element;
-}
-
-// When element is removed from DOM and GC'd, listener is automatically cleaned up
-```
-
-### Pipe: Stream-to-Stream Composition
-
-The `pipe` method enforces composition - it only accepts functions that return Stream instances, maintaining the infinite pipeline:
-
-```typescript
-// All transformers return Streams - infinite chaining
-stream.pipe(filter((v) => v > 0)); // → Stream<T>
-stream.pipe(map((v) => v.toString())); // → Stream<string>
-stream.pipe(toState("initial")); // → State<string> (extends Stream)
-
-// Infinite chaining - every pipe returns a Stream
-const result = stream
-  .pipe(filter((v) => v > 0))
-  .pipe(map((v) => v * 2))
-  .pipe(take(5))
-  .pipe(delay(100))
-  .pipe(distinct()); // Always chainable
-```
-
-**Streams are infinite** - Like event emitters, they don't terminate naturally. The `pipe` constraint ensures you maintain the reactive paradigm throughout your entire pipeline.
-
-**Perfect TypeScript inference** - no annotations needed:
+### 3. Transform with pipe
 
 ```typescript
 const numbers = new Stream<number>();
 
-// TypeScript knows these are all Streams
-const doubled = numbers.pipe(map((n) => n * 2)); // Stream<number>
-const strings = numbers.pipe(map((n) => n.toString())); // Stream<string>
-const state = numbers.pipe(toState(0)); // State<number>
+const doubled = numbers.pipe(filter((n) => n > 0)).pipe(map((n) => n * 2));
+
+doubled.listen((n) => console.log(n));
+numbers.push(-1, 2, 3);
+// Output: 4, 6
 ```
 
-### Universal Primitives: The Four Algebraic Operations
-
-All stream operations are built from four universal primitives with **Adaptive Constraints**:
-
-#### 1. Filter
+### 4. Async Iteration
 
 ```typescript
-import { filter } from "@soffinal/stream";
-
-// Simple filtering
-stream.pipe(filter((value) => value > 0));
-
-// Type guard filtering
-stream.pipe(filter((value): value is number => typeof value === "number"));
-
-// Async filtering with concurrency strategies
-stream.pipe(
-  filter(
-    async (value) => {
-      const isValid = await validateAsync(value);
-      return isValid;
-    },
-    { strategy: "concurrent-ordered" }
-  ) // Parallel validation, ordered results
-);
-
-// Stateful filtering with termination
-stream.pipe(
-  filter({ count: 0 }, (state, value) => {
-    if (state.count >= 10) return; // Terminate after 10 items
-    return [value > 0, { count: state.count + 1 }];
-  })
-);
+for await (const value of stream) {
+  console.log(value);
+  if (done) break;
+}
 ```
 
-**[📖 Complete Filter Documentation →](src/transformers/filter.md)**
+## Transformers
 
-#### 2. Map - Adaptive Transformer
+### state - Reactive State
 
 ```typescript
-import { map } from "@soffinal/stream";
+const counter = new Stream<number>().pipe(state(0));
 
-// Simple transformation
-stream.pipe(map((value) => value * 2));
+counter.listen((n) => console.log(n));
+counter.state.value = 5; // Triggers listener
+console.log(counter.state.value); // 5
+```
 
-// Type transformation
-stream.pipe(map((value: number) => value.toString()));
+**[📖 Full Documentation →](src/transformers/state/state.md)**
 
-// Async transformation with concurrency strategies
+### gate - Flow Control
+
+```typescript
+const stream = new Stream<number>().pipe(gate());
+
+stream.listen((n) => console.log(n));
+stream.push(1); // Logs: 1
+stream.gate.close();
+stream.push(2); // Blocked
+stream.gate.open();
+stream.push(3); // Logs: 3
+```
+
+**[📖 Full Documentation →](src/transformers/gate/gate.md)**
+
+### filter - Remove Values
+
+```typescript
+// Simple
+stream.pipe(filter((n) => n > 0));
+
+// Async
+stream.pipe(filter(async (n) => await validate(n)));
+
+// Stateful
 stream.pipe(
-  map(
-    async (value) => {
-      const enriched = await enrichWithAPI(value);
-      return enriched;
-    },
-    { strategy: "concurrent-unordered" }
-  ) // Parallel processing, results as completed
-);
-
-// Stateful transformation with context
-stream.pipe(
-  map({ sum: 0 }, (state, value) => {
-    const newSum = state.sum + value;
-    return [{ value, runningSum: newSum }, { sum: newSum }];
-  })
+  filter({ count: 0 }, (state, n) => {
+    if (state.count >= 10) return; // Stop after 10
+    return [n > 0, { count: state.count + 1 }];
+  }),
 );
 ```
 
-**[📖 Complete Map Documentation →](src/transformers/map.md)**
+**[📖 Full Documentation →](src/transformers/filter/filter.md)**
 
-#### 3. Merge - Stream Orchestration
+### map - Transform Values
 
 ```typescript
-import { merge } from "@soffinal/stream";
+// Simple
+stream.pipe(map((n) => n * 2));
 
-const stream1 = new Stream<number>();
-const stream2 = new Stream<string>();
+// Async
+stream.pipe(map(async (n) => await process(n)));
 
-// Combine multiple streams with type safety
-const combined = stream1.pipe(merge(stream2));
+// Stateful
+stream.pipe(
+  map({ sum: 0 }, (state, n) => {
+    const newSum = state.sum + n;
+    return [newSum, { sum: newSum }];
+  }),
+);
+```
+
+**[📖 Full Documentation →](src/transformers/map/map.md)**
+
+### merge - Combine Streams
+
+```typescript
+const numbers = new Stream<number>();
+const strings = new Stream<string>();
+
+const combined = numbers.pipe(merge(strings));
 // Type: Stream<number | string>
-
-combined.listen((value) => {
-  if (typeof value === "number") {
-    console.log("Number:", value);
-  } else {
-    console.log("String:", value);
-  }
-});
 ```
 
-**[📖 Complete Merge Documentation →](src/transformers/merge.md)**
+**[📖 Full Documentation →](src/transformers/merge/merge.md)**
 
-#### 4. Flat - Event Multiplication
+### flat - Flatten Arrays
 
 ```typescript
-import { flat } from "@soffinal/stream";
+const arrays = new Stream<number[]>();
+const numbers = arrays.pipe(flat());
 
-// Transform 1 array event → N individual events
-const arrayStream = new Stream<number[]>();
-const individualNumbers = arrayStream.pipe(flat());
-
-arrayStream.push([1, 2, 3]); // Emits: 1, 2, 3 as separate events
-// Type: Stream<number>
-
-// Configurable depth flattening
-const deepArrays = new Stream<number[][][]>();
-const flattened = deepArrays.pipe(flat(2)); // Flatten 2 levels deep
-// Type: Stream<number>
+arrays.push([1, 2, 3]); // Emits: 1, 2, 3
 ```
 
-**[📖 Complete Flat Documentation →](src/transformers/flat.md)**
+**[📖 Full Documentation →](src/transformers/flat/flat.md)**
 
-### Documentation-as-Distribution: Copy-Paste Transformers
+## Write Your Own
 
-No separate repos, no CLI tools, no package management - just copy-paste ready transformers embedded in JSDoc!
-
-#### The Educational Transparency
-
-Our approach makes **every implementation pattern visible and learnable**:
+A transformer is just a function:
 
 ```typescript
-// 📦 All transformers are copy-pastable from IntelliSense!
-// Hover over 'Stream' to see the complete transformers library
-
-// Example: Users don't just get functions - they get implementation education
-const searchInput = new Stream<string>(); // ← Hover here for full library
-const searchResults = searchInput
-  .pipe(distinct()) // Copy from Stream JSDoc - learn deduplication patterns
-  .pipe(take(10)) // Copy from Stream JSDoc - learn termination patterns
-  .pipe(delay(300)) // Copy from Stream JSDoc - learn async transformation
-  .pipe(simpleMap((query) => searchAPI(query))); // Copy from Stream JSDoc - learn mapping patterns
-```
-
-#### What Users Actually Learn
-
-When users hover over any function in JSDoc, they see **complete implementation patterns**:
-
-```typescript
-// Users see EXACTLY how to build transformers
-const take = <T>(n: number) =>
-  filter<T, { count: number }>({ count: 0 }, (state, value) => {
-    if (state.count >= n) return; // ← Learn termination patterns
-    return [true, { count: state.count + 1 }]; // ← Learn state evolution
+const double = (stream: Stream<number>) =>
+  new Stream(async function* () {
+    for await (const n of stream) yield n * 2;
   });
 
-const distinct = <T>() =>
-  filter<T, { seen: Set<T> }>({ seen: new Set() }, (state, value) => {
-    if (state.seen.has(value)) return [false, state]; // ← Learn deduplication logic
-    state.seen.add(value); // ← Learn state mutation patterns
-    return [true, state];
-  });
+stream.pipe(double);
 ```
 
-#### From Consumers to Creators
-
-This transparency empowers users to become **transformer architects**:
-
-```typescript
-// After learning from JSDoc examples, users create their own:
-const withTimestamp = <T>() =>
-  map<T, {}, { value: T; timestamp: number }>(
-    {}, // ← Learned: empty state when no memory needed
-    (_, value) => [
-      { value, timestamp: Date.now() }, // ← Learned: transformation pattern
-      {}, // ← Learned: state management
-    ]
-  );
-
-const rateLimited = <T>(maxPerSecond: number) =>
-  filter<T, { timestamps: number[] }>({ timestamps: [] }, (state, value) => {
-    const now = Date.now();
-    const recent = state.timestamps.filter((t) => now - t < 1000);
-    if (recent.length >= maxPerSecond) return [false, { timestamps: recent }];
-    return [true, { timestamps: [...recent, now] }];
-  });
-```
-
-#### Benefits Beyond Bundle Size
-
-- ✅ **Zero friction** - Copy-paste ready transformers
-- ✅ **Perfect discoverability** - IntelliSense shows all available transformers
-- ✅ **Always up-to-date** - Examples match current API version
-- ✅ **No ecosystem fragmentation** - Everything in one place
-- ✅ **Educational transparency** - Users learn implementation patterns
-- ✅ **Infinite extensibility** - Users become transformer creators
-- ✅ **Self-documenting** - Usage examples included with working code
-- ✅ **Zero bundle cost** - JSDoc stripped at compile time
-
-#### The Network Effect
-
-Documentation-as-Distribution creates **multiplicative value**:
-
-1. **User discovers** transformer in JSDoc
-2. **User learns** implementation pattern
-3. **User creates** custom transformers for their domain
-4. **User shares** patterns with their team
-5. **Team creates** hundreds of variations
-6. **Knowledge multiplies** exponentially across the community
-
-**How it works:**
-
-1. Hover over `Stream` in your IDE to see the complete transformers library
-2. Or hover over individual functions for quick references
-3. Copy the transformer you need
-4. Use immediately - perfect TypeScript inference included!
-5. **Learn the patterns** and create your own infinite variations
-
-**Available Transformers (via JSDoc):**
-
-- `take(n)`, `skip(n)`, `distinct()`, `tap(fn)` - Essential filtering patterns
-- `withIndex()`, `delay(ms)`, `pluck(key)`, `scan(fn, initial)` - Common transformation patterns
-- `toState(initialValue)` - Convert streams to reactive state
-- More transformers added with each release!
-
-**📊 Bundle Size Impact:**
-
-- **Package size**: Currently ~15KB, grows with JSDoc transformer examples over time
-- **Your app bundle**: Always only 5.5KB (runtime code only, zero JSDoc overhead)
-- **Tree-shaking**: Only imported functions included in final bundle
-- **JSDoc transformers**: "Free" - rich transformer library without production cost
-
-**You're not just building applications - you're learning a paradigm that scales infinitely.**
-
-### Manual Composition
-
-```typescript
-// You can still build transformers manually
-const customTransformer = <T>(count: number) =>
-  filter<T, { taken: number }>({ taken: 0 }, (state, value) => {
-    if (state.taken >= count) return; // Terminate after N items
-    return [true, { taken: state.taken + 1 }];
-  });
-```
-
-### Reactive State: Stateful Values
-
-`State` extends `Stream` with a current value that can be read and written:
-
-```typescript
-const user = new State<User | null>(null);
-const theme = new State<"light" | "dark">("light");
-const counter = new State(0);
-
-// Read current value
-console.log(counter.value); // 0
-
-// Write triggers all listeners
-counter.value = 5;
-
-// State from transformed streams
-const source = new Stream<number>();
-const derivedState = new State(0, source.pipe(map((v) => v * 2)));
-
-// Derived state using transformers
-const isLoggedIn = user.pipe(map((u) => u !== null));
-
-const userDisplayName = user.pipe(
-  filter((u) => u !== null),
-  map((u) => `${u.firstName} ${u.lastName}`)
-);
-
-// Convert streams to state with toState transformer
-const processedState = source
-  .pipe(filter((v) => v > 0))
-  .pipe(map((v) => v.toString()))
-  .pipe(toState("0")); // Explicit initial value
-
-// Automatic UI updates
-isLoggedIn.listen((loggedIn) => {
-  document.body.classList.toggle("authenticated", loggedIn);
-});
-
-// State changes propagate through the pipeline
-user.value = { firstName: "John", lastName: "Doe" };
-// Triggers: isLoggedIn → true, userDisplayName → 'John Doe'
-```
-
-### Reactive Collections: Fine-Grained Change Events
-
-Collections that emit specific change events for efficient UI updates:
-
-```typescript
-import { List, Map, Set } from "@soffinal/stream";
-
-const todos = new List<Todo>();
-const userCache = new Map<string, User>();
-const activeUsers = new Set<string>();
-
-// React to specific operations
-todos.insert.listen(([index, todo]) => {
-  console.log(`Todo inserted at ${index}:`, todo);
-  renderTodoAtIndex(index, todo);
-});
-
-todos.delete.listen(([index, todo]) => {
-  console.log(`Todo removed from ${index}:`, todo);
-  removeTodoFromDOM(index);
-});
-
-// Map changes
-userCache.set.listen(([key, user]) => {
-  console.log(`User cached: ${key}`, user);
-  updateUserInUI(key, user);
-});
-
-// Set changes
-activeUsers.add.listen((userId) => {
-  console.log(`User ${userId} came online`);
-  showOnlineIndicator(userId);
-});
-
-activeUsers.delete.listen((userId) => {
-  console.log(`User ${userId} went offline`);
-  hideOnlineIndicator(userId);
-});
-
-// Use like normal collections
-todos.push({ id: 1, text: "Learn streams", done: false });
-userCache.set("user1", { name: "Alice", email: "alice@example.com" });
-activeUsers.add("user1");
-```
-
-## API Reference
+## API
 
 ### Stream\<T>
 
-#### Core Methods
+- `push(...values: T[])` - Emit values
+- `listen(callback, context?)` - Add listener
+- `pipe(transformer)` - Transform stream
+- `clear()` - Remove all listeners
 
-- `push(...values: T[]): void` - Emit values to all listeners (auto-removes GC'd listeners)
-- `listen(callback: (value: T) => void, context?: AbortSignal | Stream<any> | object): () => void` - Add listener with optional cleanup
-- `pipe<OUTPUT extends Stream<any>>(transformer: (stream: this) => OUTPUT): OUTPUT` - Apply any transformer
-- `withContext(context: object): AsyncIterator<T>` - Async iterator bound to context lifetime
+### Async
 
-#### Async Interface
+- `await stream` - Wait for next value
+- `for await (const value of stream)` - Iterate
 
-- `then<U>(callback?: (value: T) => U): Promise<U>` - Promise interface for next value
-- `[Symbol.asyncIterator](): AsyncIterator<T>` - Async iteration support
+## Philosophy
 
-#### Properties
+**2 primitives**: `Stream` + `pipe`
 
-- `hasListeners: boolean` - Whether stream has active listeners
-- `listenerAdded: Stream<void>` - Emits when listener is added
-- `listenerRemoved: Stream<void>` - Emits when listener is removed
+**6 transformers**: `state`, `gate`, `filter`, `map`, `merge`, `flat`
 
-### State\<T> extends Stream\<T>
+Everything else you compose yourself.
 
-#### Constructor
+**Efficient by design**: Transformers execute once per value. Multiple listeners share the same computation:
 
-- `new State(initialValue: T)` - Create state with initial value
-- `new State(initialValue: T, stream: Stream<T>)` - Create state from stream
+```typescript
+const expensive = source.pipe(map(async v => await heavyComputation(v)));
 
-#### Additional Properties
-
-- `value: T` - Current state value (get/set)
-
-### Universal Transformers
-
-#### filter(predicate, options?)
-
-- **Simple**: `filter((value) => boolean)`
-- **Type Guard**: `filter((value): value is Type => boolean)` (sync only)
-- **Async**: `filter(async (value) => boolean, { strategy? })` with concurrency options
-- **Stateful**: `filter(state, (state, value) => [boolean, newState])` (always sequential)
-- **Termination**: Return `undefined` to terminate stream
-- **Strategies**: `"sequential"` | `"concurrent-unordered"` | `"concurrent-ordered"`
-
-#### map(mapper, options?)
-
-- **Simple**: `map((value) => newValue)`
-- **Async**: `map(async (value) => newValue, { strategy? })` with concurrency options
-- **Stateful**: `map(state, (state, value) => [newValue, newState])` (always sequential)
-- **Strategies**: `"sequential"` | `"concurrent-unordered"` | `"concurrent-ordered"`
-
-#### merge(...streams)
-
-- **Basic**: `stream.pipe(merge(stream2, stream3))`
-- **Type-Safe**: Automatically creates union types
-- **Temporal Order**: Maintains chronological sequence
-
-#### flat(depth?)
-
-- **Basic**: `stream.pipe(flat())` - Flatten one level
-- **Deep**: `stream.pipe(flat(2))` - Flatten N levels
-- **Event Multiplication**: 1 array event → N individual events
-
-### Reactive Collections
-
-#### List\<T>
-
-- `insert: Stream<[number, T]>` - Insertion events
-- `delete: Stream<[number, T]>` - Deletion events
-- `clear: Stream<void>` - Clear events
-
-#### Map\<K,V> extends globalThis.Map\<K,V>
-
-- `set: Stream<[K, V]>` - Set events (only on changes)
-- `delete: Stream<[K, V]>` - Delete events
-- `clear: Stream<void>` - Clear events
-
-#### Set\<T> extends globalThis.Set\<T>
-
-- `add: Stream<T>` - Add events (only new values)
-- `delete: Stream<T>` - Delete events
-- `clear: Stream<void>` - Clear events
+expensive.listen(v => updateUI(v));
+expensive.listen(v => logToAnalytics(v));
+expensive.listen(v => saveToCache(v));
+// heavyComputation() runs ONCE per value, not 3 times
+```
 
 ## Performance
 
-### Bundle Size
+- 1.6KB gzipped
+- Zero dependencies
+- Automatic memory management
+- Tree-shakeable
 
-- **Runtime bundle** - 5.5KB minified, 1.6KB gzipped
-- **Package size** - Starts small, grows with JSDoc transformer library
-- **Your production app** - Always gets only the 5.5KB runtime code
-- **Tree-shakeable** - Import only what you use
+## Browser Support
 
-### Benchmarks
-
-- **Fast startup** - Zero dependencies, instant initialization
-- **Efficient pipelines** - Optimized transformer composition
-- **Memory bounded** - Built-in backpressure handling
-- **Automatic cleanup** - WeakRef prevents memory leaks
-
-## Runtime Support
-
-- **Modern browsers** supporting ES2020+ (WeakRef support)
-- **Node.js** 16+
-- **Deno** 1.0+
-- **Bun** 1.0+
-- **Cloudflare Workers**
-
-## Migration Guide
-
-### From EventEmitter
-
-```typescript
-// EventEmitter
-import { EventEmitter } from "events";
-const emitter = new EventEmitter();
-emitter.on("data", console.log);
-emitter.emit("data", "hello");
-
-// @soffinal/stream
-import { Stream } from "@soffinal/stream";
-const stream = new Stream();
-stream.listen(console.log);
-stream.push("hello");
-```
-
-## Documentation
-
-### Transformer Guides
-
-- **[Filter Transformer →](src/transformers/filter.md)** - Concurrency strategies, type guards, stateful filtering, and stream termination
-- **[Map Transformer →](src/transformers/map.md)** - Concurrency strategies, type transformations, stateful mapping, and performance optimization
-- **[Merge Transformer →](src/transformers/merge.md)** - Stream orchestration and type-safe combination
-- **[Flat Transformer →](src/transformers/flat.md)** - Event multiplication and array flattening
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Setup
-
-```bash
-git clone https://github.com/soffinal/stream.git
-cd stream
-bun install
-bun test
-```
+Chrome 84+, Firefox 79+, Safari 14.1+, Node.js 16+, Deno, Bun
 
 ## License
 
 MIT © [Soffinal](https://github.com/soffinal)
-
-Contact: <smari.sofiane@gmail.com>
-
----
