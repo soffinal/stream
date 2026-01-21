@@ -102,7 +102,23 @@ describe("Stream", () => {
     });
   });
 
-  describe("AbortSignal Support", () => {
+  describe("Cleanup Mechanisms", () => {
+    it("manual cleanup removes listener", async () => {
+      const stream = new Stream<number>();
+      const values: number[] = [];
+
+      const cleanup = stream.listen((value) => values.push(value));
+
+      stream.push(1);
+      cleanup();
+      stream.push(2);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values).toEqual([1]);
+      expect(stream.hasListeners).toBe(false);
+    });
+
     it("respects aborted signal", async () => {
       const stream = new Stream<number>();
       const controller = new AbortController();
@@ -129,9 +145,80 @@ describe("Stream", () => {
       stream.push(2);
 
       await new Promise((resolve) => setTimeout(resolve, 0));
-      console.log(values);
 
       expect(values).toEqual([1]);
+    });
+
+    it("stream trigger cleanup", async () => {
+      const stream = new Stream<number>();
+      const stopSignal = new Stream<void>();
+      const values: number[] = [];
+
+      stream.listen((value) => values.push(value), stopSignal);
+
+      stream.push(1);
+      stopSignal.push();
+      stream.push(2);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values).toEqual([1]);
+      expect(stream.hasListeners).toBe(false);
+    });
+
+    it("disposable pattern with Symbol.dispose", () => {
+      const stream = new Stream<number>();
+      const values: number[] = [];
+
+      const cleanup = stream.listen((value) => values.push(value));
+
+      expect(typeof cleanup[Symbol.dispose]).toBe("function");
+      expect(cleanup[Symbol.dispose]).toBe(cleanup);
+
+      stream.push(1);
+      cleanup[Symbol.dispose]();
+      stream.push(2);
+
+      expect(values).toEqual([1]);
+      expect(stream.hasListeners).toBe(false);
+    });
+
+    it("clear method removes all listeners", async () => {
+      const stream = new Stream<number>();
+      const values1: number[] = [];
+      const values2: number[] = [];
+
+      stream.listen((value) => values1.push(value));
+      stream.listen((value) => values2.push(value));
+
+      expect(stream.hasListeners).toBe(true);
+
+      stream.clear();
+
+      expect(stream.hasListeners).toBe(false);
+
+      stream.push(1);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(values1).toEqual([]);
+      expect(values2).toEqual([]);
+    });
+
+    it("stream dispose method calls clear", () => {
+      const stream = new Stream<number>();
+      const values: number[] = [];
+
+      stream.listen((value) => values.push(value));
+
+      expect(stream.hasListeners).toBe(true);
+
+      stream[Symbol.dispose]();
+
+      expect(stream.hasListeners).toBe(false);
+
+      stream.push(1);
+
+      expect(values).toEqual([]);
     });
   });
 
@@ -407,7 +494,7 @@ describe("Stream", () => {
             for await (const value of stream) {
               yield value.toString();
             }
-          })
+          }),
       );
 
       const results: string[] = [];

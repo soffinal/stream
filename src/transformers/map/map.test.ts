@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { Stream } from "../stream";
+import { Stream } from "../../stream";
 import { map } from "./map";
-import { filter } from "./filter";
-import { State } from "../reactive/state";
+import { filter } from "../filter";
+import { state as State } from "../state";
 
 describe("map transformer", () => {
   describe("basic functionality", () => {
@@ -22,6 +22,7 @@ describe("map transformer", () => {
 
     it("should transform types correctly", async () => {
       const stream = new Stream<number>();
+
       const mapped = stream.pipe(map({}, (state, value) => [value.toString(), state]));
 
       const results: string[] = [];
@@ -51,7 +52,7 @@ describe("map transformer", () => {
     it("should maintain state across transformations", async () => {
       const stream = new Stream<number>();
       const mapped = stream.pipe(
-        map({ count: 0 }, (state, value) => [{ value, count: state.count }, { count: state.count + 1 }])
+        map({ count: 0 }, (state, value) => [{ value, count: state.count }, { count: state.count + 1 }]),
       );
 
       const results: { value: number; count: number }[] = [];
@@ -74,7 +75,7 @@ describe("map transformer", () => {
         map({ sum: 0 }, (state, value) => {
           const newSum = state.sum + value;
           return [newSum, { sum: newSum }];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -101,7 +102,7 @@ describe("map transformer", () => {
             },
             { words: newWords, totalLength: newTotalLength },
           ];
-        })
+        }),
       );
 
       const results: { word: string; wordCount: number; avgLength: number }[] = [];
@@ -126,7 +127,7 @@ describe("map transformer", () => {
         map({}, async (state, value) => {
           await new Promise((resolve) => setTimeout(resolve, 1));
           return [value * 3, state];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -148,7 +149,7 @@ describe("map transformer", () => {
           await new Promise((resolve) => setTimeout(resolve, delay));
 
           return [{ value, processedAt: state.processed }, { processed: state.processed + 1 }];
-        })
+        }),
       );
 
       const results: { value: number; processedAt: number }[] = [];
@@ -177,7 +178,7 @@ describe("map transformer", () => {
           newCache.set(value, count);
 
           return [{ word: value, occurrences: count }, { cache: newCache }];
-        })
+        }),
       );
 
       const results: { word: string; occurrences: number }[] = [];
@@ -207,14 +208,14 @@ describe("map transformer", () => {
             throw new Error("Division by zero");
           }
           return [10 / value, state];
-        })
+        }),
       );
 
       const results: number[] = [];
       const errors: Error[] = [];
 
       mapped.listen(
-        (value) => results.push(value)
+        (value) => results.push(value),
         // Note: This assumes the Stream class handles error propagation
         // If not, we'd need to wrap in try-catch
       );
@@ -235,7 +236,7 @@ describe("map transformer", () => {
             throw new Error("Negative value");
           }
           return [Math.sqrt(value), state];
-        })
+        }),
       );
 
       const results: number[] = [];
@@ -253,7 +254,7 @@ describe("map transformer", () => {
     it("should handle large volumes of data", async () => {
       const stream = new Stream<number>();
       const mapped = stream.pipe(
-        map({ processed: 0 }, (state, value) => [value * 2, { processed: state.processed + 1 }])
+        map({ processed: 0 }, (state, value) => [value * 2, { processed: state.processed + 1 }]),
       );
 
       const results: number[] = [];
@@ -295,7 +296,7 @@ describe("map transformer", () => {
         map({}, (state, value) => [
           value === null ? "null" : value === undefined ? "undefined" : value.toString(),
           state,
-        ])
+        ]),
       );
 
       const results: string[] = [];
@@ -319,7 +320,7 @@ describe("map transformer", () => {
             processed: true,
           },
           { idCounter: state.idCounter + 1 },
-        ])
+        ]),
       );
 
       const results: { id: number; name: string; processed: boolean }[] = [];
@@ -343,7 +344,7 @@ describe("map transformer", () => {
           // Test that state is properly isolated
           const newHistory = [...state.history, value];
           return [{ value, historyLength: newHistory.length }, { history: newHistory }];
-        })
+        }),
       );
 
       const results: { value: number; historyLength: number }[] = [];
@@ -370,8 +371,8 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             return x * 2;
           },
-          { strategy: "sequential" }
-        )
+          { strategy: "sequential" },
+        ),
       );
 
       const results: number[] = [];
@@ -395,8 +396,8 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return x * 2;
           },
-          { strategy: "concurrent-unordered" }
-        )
+          { strategy: "concurrent-unordered" },
+        ),
       );
 
       const results: number[] = [];
@@ -422,8 +423,8 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return x * 2;
           },
-          { strategy: "concurrent-ordered" }
-        )
+          { strategy: "concurrent-ordered" },
+        ),
       );
 
       const results: number[] = [];
@@ -444,8 +445,8 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 5));
             return x.toString();
           },
-          { strategy: "concurrent-unordered" }
-        )
+          { strategy: "concurrent-unordered" },
+        ),
       );
 
       const results: string[] = [];
@@ -471,8 +472,8 @@ describe("map transformer", () => {
               timestamp: Date.now(),
             };
           },
-          { strategy: "concurrent-ordered" }
-        )
+          { strategy: "concurrent-ordered" },
+        ),
       );
 
       const results: Array<{ original: number; doubled: number; timestamp: number }> = [];
@@ -495,7 +496,7 @@ describe("map transformer", () => {
     it("should work with State constructor integration", async () => {
       const source = new Stream<number>();
       const mapped = source.pipe(map({}, (_, v) => [v.toString(), {}]));
-      const state = new State("0", mapped);
+      const state = mapped.pipe(State("0"));
 
       const results: string[] = [];
       state.listen((value) => results.push(value));
@@ -503,7 +504,7 @@ describe("map transformer", () => {
       source.push(1, 2, 3);
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(results).toEqual(["1", "2", "3"]);
-      expect(state.value).toBe("3");
+      expect(state.state.value).toBe("3");
     });
 
     it("should work in complex transformation chains", async () => {

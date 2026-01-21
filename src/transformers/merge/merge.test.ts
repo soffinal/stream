@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { Stream } from "../stream";
+import { Stream } from "../../stream";
 import { merge } from "./merge";
 
 describe("merge transformer", () => {
