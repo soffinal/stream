@@ -27,14 +27,20 @@
  * ```
  *
  * @example
- * // 📦 COPY-PASTE TRANSFORMERS LIBRARY - Essential transformers for immediate use
+ * // 📦 COMPOSABLE TRANSFORMERS - Build your own from primitives
  *
- * // FILTERING TRANSFORMERS
+ * // FILTERING PATTERNS
  *
  * const take = <T>(n: number) =>
  *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
  *     if (state.count >= n) return;
  *     return [true, { count: state.count + 1 }];
+ *   });
+ *
+ * const skip = <T>(n: number) =>
+ *   filter<T, { count: number }>({ count: 0 }, (state, value) => {
+ *     const newCount = state.count + 1;
+ *     return [newCount > n, { count: newCount }];
  *   });
  *
  * const distinct = <T>() =>
@@ -44,13 +50,27 @@
  *     return [true, state];
  *   });
  *
+ * const throttle = <T>(ms: number) =>
+ *   filter<T, { lastEmit: number }>({ lastEmit: 0 }, (state, value) => {
+ *     const now = Date.now();
+ *     if (now - state.lastEmit < ms) return [false, state];
+ *     return [true, { lastEmit: now }];
+ *   });
+ *
+ * const debounce = <T>(ms: number) =>
+ *   filter<T, { timer: any }>({ timer: null }, (state, value) => {
+ *     clearTimeout(state.timer);
+ *     const timer = setTimeout(() => {}, ms);
+ *     return [false, { timer }];
+ *   });
+ *
  * const tap = <T>(fn: (value: T) => void | Promise<void>) =>
  *   filter<T, {}>({}, async (_, value) => {
  *     await fn(value);
  *     return [true, {}];
  *   });
  *
- * // MAPPING TRANSFORMERS
+ * // MAPPING PATTERNS
  *
  * const withIndex = <T>() =>
  *   map<T, { index: number }, { value: T; index: number }>(
@@ -73,12 +93,18 @@
  *     return [newAcc, { acc: newAcc }];
  *   });
  *
- * // STATE CONVERTER
- * const toState = <T>(initialValue: T) => (stream: Stream<T>) => {
- *   return new State(initialValue, stream);
- * };
+ * const pluck = <T, K extends keyof T>(key: K) =>
+ *   map<T, {}, T[K]>({}, (_, value) => [value[key], {}]);
  *
- * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(toState(0));
+ * // COMBINATION PATTERNS
+ *
+ * const combineLatest = <T, U>(other: Stream<U>) => (source: Stream<T>) =>
+ *   source.pipe(store()).pipe(zip(other.pipe(store())));
+ *
+ * const startWith = <T>(...values: T[]) => (source: Stream<T>) =>
+ *   source.pipe(store(values));
+ *
+ * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(scan((a, b) => a + b, 0))
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   protected _listeners: Map<(value: VALUE) => void, WeakRef<object> | undefined> = new Map();

@@ -1,274 +1,143 @@
-# Filter Transformer
+# filter
 
-The `filter` transformer selectively passes values through a stream based on predicate functions. It supports synchronous and asynchronous filtering, type guards, stateful operations, and multiple concurrency strategies.
+Remove values from a stream based on a predicate. Supports async predicates, type guards, and stateful filtering.
 
-## Quick Start
+## Type
 
 ```typescript
-import { Stream, filter } from "@soffinal/stream";
+function filter<T>(
+  predicate: (value: T) => boolean | void | Promise<boolean | void>,
+  options?: { strategy?: "sequential" | "concurrent-unordered" | "concurrent-ordered" },
+): Stream.Transformer<Stream<T>, Stream<T>>;
 
-const numbers = new Stream<number>();
-
-// Simple filtering
-const positives = numbers.pipe(filter((n) => n > 0));
-
-positives.listen(console.log);
-numbers.push(-1, 2, -3, 4); // Outputs: 2, 4
+function filter<T, STATE extends Record<string, unknown>>(
+  initialState: STATE,
+  predicate: (state: STATE, value: T) => [boolean, STATE] | void | Promise<[boolean, STATE] | void>,
+): Stream.Transformer<Stream<T>, Stream<T>>;
 ```
 
-## Basic Usage
+## Behavior
 
-### Synchronous Filtering
+- **Selective**: Only values passing predicate are emitted
+- **Type guards**: Supports TypeScript type narrowing
+- **Async**: Supports async predicates with strategy options
+- **Stateful**: Track state across values (optional)
+- **Termination**: Return `undefined` to stop stream
+
+## Use Cases
+
+### 1. Simple Filtering
 
 ```typescript
-// Basic predicate
-stream.pipe(filter((value) => value > 10));
-
-// Complex conditions
+stream.pipe(filter((n) => n > 0));
 stream.pipe(filter((user) => user.active && user.age >= 18));
-
-// Null/undefined filtering
 stream.pipe(filter((value) => value != null));
 ```
 
-### Type Guards
-
-Filter supports TypeScript type guards for type narrowing:
+### 2. Type Guards
 
 ```typescript
 const mixed = new Stream<string | number>();
 
-// Type narrows to Stream<number>
-const numbers = mixed.pipe(filter((value): value is number => typeof value === "number"));
-
-// Type narrows to Stream<string>
-const strings = mixed.pipe(filter((value): value is string => typeof value === "string"));
+const numbers = mixed.pipe(filter((v): v is number => typeof v === "number"));
+const strings = mixed.pipe(filter((v): v is string => typeof v === "string"));
 ```
 
-## Asynchronous Filtering
-
-### Sequential Processing (Default)
+### 3. Async Validation
 
 ```typescript
-const stream = new Stream<string>();
-
-const validated = stream.pipe(
+stream.pipe(
   filter(async (email) => {
-    const isValid = await validateEmail(email);
-    return isValid;
-  })
+    return await validateEmail(email);
+  }),
 );
 ```
 
-### Concurrent Strategies
-
-For expensive async predicates, choose a concurrency strategy:
-
-#### Concurrent Unordered
-
-Results emit as soon as they complete, potentially out of order:
+### 4. Stateful Filtering
 
 ```typescript
-const stream = new Stream<string>();
-
-const validated = stream.pipe(
-  filter(
-    async (url) => {
-      const isReachable = await checkURL(url);
-      return isReachable;
-    },
-    { strategy: "concurrent-unordered" }
-  )
-);
-
-// URLs may emit in different order based on response times
-```
-
-#### Concurrent Ordered
-
-Parallel processing but maintains original order:
-
-```typescript
-const stream = new Stream<User>();
-
-const verified = stream.pipe(
-  filter(
-    async (user) => {
-      const isVerified = await verifyUser(user.id);
-      return isVerified;
-    },
-    { strategy: "concurrent-ordered" }
-  )
-);
-
-// Users always emit in original order despite varying verification times
-```
-
-## Stateful Filtering
-
-Maintain state across filter operations for complex logic:
-
-### Basic Stateful Filtering
-
-```typescript
-const stream = new Stream<number>();
-
-// Take only first 5 items
-const limited = stream.pipe(
+// Take first 5 values
+stream.pipe(
   filter({ count: 0 }, (state, value) => {
-    if (state.count >= 5) return; // Terminate stream
+    if (state.count >= 5) return; // Terminate
     return [true, { count: state.count + 1 }];
-  })
+  }),
 );
-```
 
-### Advanced State Management
-
-```typescript
-const stream = new Stream<string>();
-
-// Deduplicate values
-const unique = stream.pipe(
-  filter({ seen: new Set<string>() }, (state, value) => {
-    if (state.seen.has(value)) {
-      return [false, state]; // Skip duplicate
-    }
-
+// Deduplicate
+stream.pipe(
+  filter({ seen: new Set() }, (state, value) => {
+    if (state.seen.has(value)) return [false, state];
     const newSeen = new Set(state.seen);
     newSeen.add(value);
     return [true, { seen: newSeen }];
-  })
+  }),
 );
 ```
 
-### Complex Stateful Logic
+## Options
+
+### strategy
+
+Controls async predicate execution:
+
+**'sequential' (default):**
 
 ```typescript
-const events = new Stream<{ type: string; timestamp: number }>();
-
-// Rate limiting: max 5 events per second
-const rateLimited = events.pipe(
-  filter(
-    {
-      timestamps: [] as number[],
-      maxPerSecond: 5,
-    },
-    (state, event) => {
-      const now = event.timestamp;
-      const recent = state.timestamps.filter((t) => now - t < 1000);
-
-      if (recent.length >= state.maxPerSecond) {
-        return [false, { ...state, timestamps: recent }];
-      }
-
-      return [
-        true,
-        {
-          ...state,
-          timestamps: [...recent, now],
-        },
-      ];
-    }
-  )
+stream.pipe(
+  filter(async (v) => await validate(v)),
 );
+// Values processed one at a time
 ```
 
-## Stream Termination
-
-Filters can terminate streams by returning `undefined`:
+**'concurrent-unordered':**
 
 ```typescript
-const stream = new Stream<string>();
-
-const untilStop = stream.pipe(
-  filter((value) => {
-    if (value === "STOP") return; // Terminates stream
-    return value.length > 0;
-  })
+stream.pipe(
+  filter(async (v) => await validate(v), { strategy: "concurrent-unordered" }),
 );
-
-stream.push("hello", "world", "STOP", "ignored");
-// Only "hello" and "world" are emitted
+// All values processed concurrently, order not preserved
 ```
 
-### Conditional Termination
+**'concurrent-ordered':**
 
 ```typescript
-const numbers = new Stream<number>();
-
-const untilNegative = numbers.pipe(
-  filter({ sum: 0 }, (state, value) => {
-    const newSum = state.sum + value;
-    if (newSum < 0) return; // Terminate when sum goes negative
-
-    return [value > 0, { sum: newSum }];
-  })
+stream.pipe(
+  filter(async (v) => await validate(v), { strategy: "concurrent-ordered" }),
 );
+// All values processed concurrently, order preserved
 ```
 
-## Performance Considerations
+**Note:** Stateful filters are always sequential (no strategy option).
 
-### When to Use Concurrency
+## Patterns
 
-- **Sequential**: Default choice, maintains order, lowest overhead
-- **Concurrent-unordered**: Use when order doesn't matter and predicates are expensive
-- **Concurrent-ordered**: Use when order matters but predicates are expensive
-
-### Memory Management
-
-Stateful filters maintain state objects. For large datasets:
-
-```typescript
-// Good: Bounded state
-filter({ count: 0, limit: 1000 }, (state, value) => {
-  if (state.count >= state.limit) return;
-  return [predicate(value), { ...state, count: state.count + 1 }];
-});
-
-// Avoid: Unbounded state growth
-filter({ history: [] }, (state, value) => {
-  // This grows indefinitely!
-  return [true, { history: [...state.history, value] }];
-});
-```
-
-## Error Handling
-
-Errors in predicates will propagate and potentially terminate the stream:
-
-```typescript
-const stream = new Stream<number>();
-
-const safe = stream.pipe(
-  filter((value) => {
-    try {
-      return riskyPredicate(value);
-    } catch (error) {
-      console.error("Filter error:", error);
-      return false; // Skip problematic values
-    }
-  })
-);
-```
-
-## Common Patterns
-
-### Throttling
+### Throttle
 
 ```typescript
 const throttle = <T>(ms: number) =>
   filter<T, { lastEmit: number }>({ lastEmit: 0 }, (state, value) => {
     const now = Date.now();
-    if (now - state.lastEmit < ms) {
-      return [false, state];
-    }
+    if (now - state.lastEmit < ms) return [false, state];
     return [true, { lastEmit: now }];
   });
 
-stream.pipe(throttle(1000)); // Max one value per second
+stream.pipe(throttle(1000)); // Max one per second
 ```
 
-### Sampling
+### Take
+
+```typescript
+const take = <T>(n: number) =>
+  filter<T, { count: number }>({ count: 0 }, (state, value) => {
+    if (state.count >= n) return;
+    return [true, { count: state.count + 1 }];
+  });
+
+stream.pipe(take(10)); // First 10 values
+```
+
+### Sample
 
 ```typescript
 const sample = <T>(n: number) =>
@@ -280,47 +149,15 @@ const sample = <T>(n: number) =>
 stream.pipe(sample(3)); // Every 3rd value
 ```
 
-### Windowing
+## Performance
 
-```typescript
-const slidingWindow = <T>(size: number) =>
-  filter<T, { window: T[] }>({ window: [] }, (state, value) => {
-    const newWindow = [...state.window, value].slice(-size);
-    const shouldEmit = newWindow.length === size;
+- **Overhead**: Minimal - just predicate execution
+- **Async**: Can add latency with slow predicates
+- **Stateful**: Slightly more overhead for state management
+- **Memory**: O(1) for stateless, O(state size) for stateful
 
-    return [shouldEmit, { window: newWindow }];
-  });
+## Related
 
-stream.pipe(slidingWindow(5)); // Emit when window is full
-```
-
-## Type Signatures
-
-```typescript
-// Simple predicate with optional concurrency
-filter<VALUE>(
-  predicate: (value: VALUE) => boolean | void | Promise<boolean | void>,
-  options?: { strategy: "sequential" | "concurrent-unordered" | "concurrent-ordered" }
-): (stream: Stream<VALUE>) => Stream<VALUE>
-
-// Type guard predicate (synchronous only)
-filter<VALUE, FILTERED extends VALUE>(
-  predicate: (value: VALUE) => value is FILTERED
-): (stream: Stream<VALUE>) => Stream<FILTERED>
-
-// Stateful predicate (always sequential)
-filter<VALUE, STATE>(
-  initialState: STATE,
-  predicate: (state: STATE, value: VALUE) => [boolean, STATE] | void
-): (stream: Stream<VALUE>) => Stream<VALUE>
-```
-
-## Best Practices
-
-1. **Choose the right strategy**: Use sequential for simple predicates, concurrent for expensive async operations
-2. **Manage state size**: Keep stateful filter state bounded to prevent memory leaks
-3. **Handle errors gracefully**: Wrap risky predicates in try-catch blocks
-4. **Use type guards**: Leverage TypeScript's type narrowing for better type safety
-5. **Consider termination**: Use `return undefined` to cleanly terminate streams when conditions are met
-
-The filter transformer is a powerful tool for stream processing that scales from simple synchronous predicates to complex stateful async operations with optimal performance characteristics.
+- [map](../map/map.md) - Transform values
+- [gate](../gate/gate.md) - Manual flow control
+- [effect](../effect/effect.md) - Side effects without filtering

@@ -2,11 +2,11 @@ import { Stream } from "../../stream.ts";
 
 export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPED>(
   initialStateOrMapper: STATE | map.Mapper<VALUE, MAPPED>,
-  statefulMapper?: map.StatefulMapper<VALUE, STATE, MAPPED> | map.Options,
+  statefulMapperOrOptions?: map.StatefulMapper<VALUE, STATE, MAPPED> | map.Options,
 ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>> => {
   return (stream: Stream<VALUE>): Stream<MAPPED> => {
-    if (!statefulMapper || typeof statefulMapper === "object") {
-      const { strategy = "sequential" } = statefulMapper ?? {};
+    if (!statefulMapperOrOptions || typeof statefulMapperOrOptions === "object") {
+      const { strategy = "sequential" } = statefulMapperOrOptions ?? {};
       const mapper = initialStateOrMapper as map.Mapper<VALUE, MAPPED>;
 
       if (strategy === "sequential") {
@@ -77,7 +77,7 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
       }
     }
 
-    const mapper = statefulMapper as map.StatefulMapper<VALUE, STATE, MAPPED>;
+    const mapper = statefulMapperOrOptions as map.StatefulMapper<VALUE, STATE, MAPPED>;
 
     return new Stream<MAPPED>(async function* () {
       let currentState = initialStateOrMapper as STATE;
@@ -103,6 +103,7 @@ export namespace map {
       mapper: Mapper<VALUE, MAPPED>,
       options?: Options,
     ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>>;
+    //here we have not options because stateful operations mus be sequential
     <VALUE, STATE extends Record<string, unknown> = {}, MAPPED = VALUE>(
       initialState: STATE,
       mapper: StatefulMapper<VALUE, STATE, MAPPED>,

@@ -2,7 +2,7 @@ import { it, expect, describe } from "bun:test";
 import { Stream } from "../../stream";
 import { state } from "./state";
 
-describe("state mixin", () => {
+describe("state transformer", () => {
   it("creates state with initial value", () => {
     const source = new Stream<number>();
     const s = source.pipe(state(0));

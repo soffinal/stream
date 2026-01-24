@@ -127,12 +127,15 @@ export namespace filter {
     FILTERED extends VALUE = VALUE,
   > = (state: STATE, value: VALUE) => [boolean, STATE, FILTERED] | void | Promise<[boolean, STATE, FILTERED] | void>;
   export interface Filter {
+    //here we have not options because GuardPredicate rely on synchronous function
+    // this overload is only for typescript
     <VALUE, FILTERED extends VALUE = VALUE>(
       predicate: GuardPredicate<VALUE, FILTERED>,
     ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>>;
 
     <VALUE>(predicate: Predicate<VALUE>, options?: Options): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
 
+    //here we have not options because stateful operations must be sequential
     <VALUE, STATE extends Record<string, unknown> = {}>(
       initialState: STATE,
       predicate: StatefulPredicate<VALUE, STATE>,

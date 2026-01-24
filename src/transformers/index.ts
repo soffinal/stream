@@ -4,3 +4,8 @@ export * from "./merge";
 export * from "./flat";
 export * from "./state";
 export * from "./gate";
+export * from "./zip";
+export * from "./buffer";
+export * from "./cache";
+export * from "./branch";
+export * from "./effect";

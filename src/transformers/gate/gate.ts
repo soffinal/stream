@@ -41,7 +41,7 @@ export type Gate<T> = Stream<T> & {
  * console.log(events.gate.isOpen); // false
  * ```
  */
-export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T>> {
+export function gate<T>(): Stream.Transformer<Stream<T>, Gate<T>> {
   return (source: Stream<T>): Gate<T> => {
     let isOpen = true;
 

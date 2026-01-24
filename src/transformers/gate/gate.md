@@ -1,6 +1,6 @@
 # gate
 
-Adds flow control to a stream with `.gate.open()` and `.gate.close()` methods.
+Adds `.gate.open()`, `.gate.close()`, and `.gate.isOpen` for manual flow control.
 
 ## Type
 
@@ -13,121 +13,116 @@ type Gate<T> = Stream<T> & {
   };
 };
 
-function gate<T>(): (source: Stream<T>) => Gate<T>;
-```
-
-## Usage
-
-### Basic Flow Control
-
-```typescript
-const source = new Stream<number>();
-const gated = source.pipe(gate());
-
-gated.listen((value) => {
-  console.log("Value:", value);
-});
-
-source.push(1); // Logs: "Value: 1"
-gated.gate.close();
-source.push(2); // Blocked, nothing logged
-gated.gate.open();
-source.push(3); // Logs: "Value: 3"
-```
-
-### Standalone Gate
-
-```typescript
-const events = new Stream<string>().pipe(gate());
-
-events.listen((msg) => console.log(msg));
-
-events.push("Hello"); // Logs: "Hello"
-events.gate.close();
-events.push("World"); // Blocked
-```
-
-### Conditional Gating
-
-```typescript
-const stream = new Stream<number>().pipe(gate());
-
-stream.listen((value) => {
-  console.log("Processing:", value);
-});
-
-// Open gate only during business hours
-const now = new Date().getHours();
-if (now >= 9 && now < 17) {
-  stream.gate.open();
-} else {
-  stream.gate.close();
-}
-```
-
-### Check Gate Status
-
-```typescript
-const gated = new Stream<number>().pipe(gate());
-
-console.log(gated.gate.isOpen); // true (starts open)
-
-gated.gate.close();
-console.log(gated.gate.isOpen); // false
-
-gated.gate.open();
-console.log(gated.gate.isOpen); // true
+function gate<T>(): Stream.Transformer<Stream<T>, Gate<T>>;
 ```
 
 ## Behavior
 
-- **Initial state**: Gate starts **open**
+- **Initial state**: Gate starts open
 - **Open**: Values flow through normally
-- **Closed**: Values are blocked (not emitted to listeners)
-- **Real-time**: Gate state checked when each value arrives
-- **No buffering**: Blocked values are dropped, not queued
+- **Closed**: Values are blocked (dropped, not buffered)
+- **Real-time**: Gate state checked for each value
+- **No buffering**: Blocked values are not queued
+
+## Use Cases
+
+### 1. Pause/Resume
+
+```typescript
+const stream = new Stream<number>().pipe(gate());
+
+stream.listen((value) => console.log(value));
+
+stream.push(1); // Logs: 1
+stream.gate.close();
+stream.push(2); // Blocked
+stream.gate.open();
+stream.push(3); // Logs: 3
+```
+
+### 2. Feature Flags
+
+```typescript
+const features = new Stream<Feature>().pipe(gate());
+
+// Enable/disable features dynamically
+if (config.enableNewFeatures) {
+  features.gate.open();
+} else {
+  features.gate.close();
+}
+```
+
+### 3. Circuit Breaker
+
+```typescript
+const requests = new Stream<Request>().pipe(gate());
+
+requests.listen(async (req) => {
+  try {
+    await processRequest(req);
+  } catch (error) {
+    requests.gate.close(); // Stop processing on error
+    setTimeout(() => requests.gate.open(), 5000); // Retry after 5s
+  }
+});
+```
+
+### 4. Conditional Processing
+
+```typescript
+const events = new Stream<Event>().pipe(gate());
+
+// Process only during business hours
+const now = new Date().getHours();
+if (now >= 9 && now < 17) {
+  events.gate.open();
+} else {
+  events.gate.close();
+}
+```
 
 ## Composition
 
 ```typescript
 // Gate + State
-const gatedState = new Stream<number>()
-  .pipe(state(0))
-  .pipe(gate());
+const gatedState = new Stream<number>().pipe(state(0)).pipe(gate());
 
 gatedState.state.value = 5; // Emits if open
 gatedState.gate.close();
 gatedState.state.value = 10; // Blocked
 
 // Gate + Filter
-const filtered = new Stream<number>()
-  .pipe(gate())
-  .pipe(filter((n) => n > 0));
+const filtered = new Stream<number>().pipe(gate()).pipe(filter((n) => n > 0));
 
-filtered.gate.close();
 // Both gate and filter must pass
-
-// Multiple Gates
-const doubleGated = new Stream<number>()
-  .pipe(gate())
-  .pipe(gate());
-
-// Both gates must be open for values to flow
 ```
 
-## Use Cases
+## Bypass Pattern
 
-- **Pause/Resume**: Pause event processing temporarily
-- **Feature Flags**: Enable/disable features dynamically
-- **Rate Limiting**: Close gate after quota exceeded
-- **Conditional Processing**: Process events only when conditions met
-- **Backpressure**: Close gate when downstream is overwhelmed
-- **Circuit Breaker**: Close gate on errors, reopen after recovery
+Direct `.push()` bypasses the gate:
 
-## Notes
+```typescript
+const stream = new Stream<number>().pipe(gate());
 
-- Gate starts **open** by default
-- Blocked values are **dropped**, not buffered
-- Gate state is checked in real-time for each value
-- Composable with all other transformers
-- No events emitted when gate state changes
+stream.listen((n) => console.log(n));
+
+stream.gate.close();
+source.push(1); // Blocked
+
+stream.push(999); // Logs: 999 (bypasses gate!)
+```
+
+**Use cases:** Critical alerts, emergency notifications, debug messages.
+
+## Performance
+
+- **Overhead**: Minimal - just boolean check
+- **Memory**: O(1) - no buffering
+- **No events**: Gate state changes don't emit events
+
+## Related
+
+- [state](../state/state.md) - Reactive state management
+- [filter](../filter/filter.md) - Conditional filtering
+- [cache](../cache/cache.md) - Store values

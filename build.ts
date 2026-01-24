@@ -1,3 +1,6 @@
+// Generate documentation
+await Bun.$`bun run scripts/generate-docs.ts`;
+
 // Clean dist
 await Bun.$`rm -rf dist`;
 

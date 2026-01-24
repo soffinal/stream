@@ -23,7 +23,8 @@
   "description": "Composable reactive primitives for TypeScript",
   "files": [
     "dist",
-    "src/transformers/*.md",
+    "src/transformers/**/*.md",
+    "patterns/README.md",
     "README.md"
   ],
   "keywords": [
@@ -38,5 +39,10 @@
   ],
   "license": "MIT",
   "type": "module",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "generate-docs": "bun run scripts/generate-docs.ts",
+    "test": "bun test",
+    "test:patterns": "bun test patterns/"
+  }
 }

@@ -1,6 +1,6 @@
 # state
 
-Adds `.state.value` getter/setter to a stream, enabling reactive state management.
+Adds `.state.value` getter/setter for reactive state management with automatic dependency tracking.
 
 ## Type
 
@@ -11,39 +11,31 @@ type State<T> = Stream<T> & {
   };
 };
 
-function state<T>(initialValue: T): (source: Stream<T>) => State<T>;
+function state<T>(initialValue: T): Stream.Transformer<Stream<T>, State<T>>;
 ```
 
-## Usage
+## Behavior
 
-### Basic State
+- **Reactive**: `.state.value` setter triggers listeners
+- **Getter**: `.state.value` returns current value
+- **Source updates**: Values from source stream update state
+- **Synchronous**: State updates are immediate
+- **Dependency tracking**: Works with `effect()` for automatic reactivity
+
+## Use Cases
+
+### 1. Basic State
 
 ```typescript
 const counter = new Stream<number>().pipe(state(0));
 
-counter.listen((value) => {
-  console.log("Counter:", value);
-});
+counter.listen((value) => console.log(value));
 
-counter.state.value = 5; // Triggers listener, logs: "Counter: 5"
+counter.state.value = 5; // Logs: 5
 console.log(counter.state.value); // 5
 ```
 
-### State from Source Stream
-
-```typescript
-const source = new Stream<number>();
-const stateful = source.pipe(state(0));
-
-stateful.listen((value) => {
-  console.log("Value:", value);
-});
-
-source.push(10); // Logs: "Value: 10"
-console.log(stateful.state.value); // 10
-```
-
-### Reactive UI Updates
+### 2. UI State
 
 ```typescript
 const user = new Stream<User | null>().pipe(state(null));
@@ -54,63 +46,81 @@ user.listen((u) => {
   }
 });
 
-// Update state
 user.state.value = { name: "Alice", email: "alice@example.com" };
 ```
 
-### Derived State
+### 3. Derived State
 
 ```typescript
 const count = new Stream<number>().pipe(state(0));
 const doubled = count.pipe(map((n) => n * 2)).pipe(state(0));
 
-doubled.listen((value) => {
-  console.log("Doubled:", value);
-});
+doubled.listen((value) => console.log("Doubled:", value));
 
 count.state.value = 5; // Logs: "Doubled: 10"
 ```
 
-## Behavior
+### 4. Reactive Effects
 
-- **Initial value**: Stream starts with `initialValue`
-- **Getter**: `.state.value` returns current value
-- **Setter**: `.state.value = x` updates value and triggers listeners
-- **Source updates**: Values from source stream update internal state
-- **Synchronous**: State updates are synchronous
+```typescript
+import { effect } from "@soffinal/stream";
+
+const counter = new Stream<number>().pipe(state(0));
+const user = new Stream<string>().pipe(state("Alice"));
+
+// Auto-tracks dependencies
+const cleanup = effect(() => {
+  console.log(`${user.state.value}: ${counter.state.value}`);
+});
+
+counter.state.value = 5; // Logs: "Alice: 5"
+user.state.value = "Bob"; // Logs: "Bob: 5"
+
+cleanup(); // Stop effect
+```
 
 ## Composition
 
 ```typescript
 // State + Gate
-const gatedState = new Stream<number>()
-  .pipe(state(0))
-  .pipe(gate());
+const gatedState = new Stream<number>().pipe(state(0)).pipe(gate());
 
 gatedState.state.value = 5; // Emits if gate is open
 gatedState.gate.close();
 gatedState.state.value = 10; // Blocked by gate
 
 // State + Filter
-const filtered = new Stream<number>()
-  .pipe(state(0))
-  .pipe(filter((n) => n > 0));
+const filtered = new Stream<number>().pipe(state(0)).pipe(filter((n) => n > 0));
 
 filtered.state.value = -5; // Filtered out
 filtered.state.value = 5; // Passes through
 ```
 
-## Use Cases
+## Bypass Pattern
 
-- **UI State Management**: Reactive component state
-- **Form State**: Track form values with automatic updates
-- **Application State**: Global state with reactive updates
-- **Derived Values**: Compute values from other state
-- **State Machines**: Track current state with transitions
+Direct `.push()` bypasses state updates:
 
-## Notes
+```typescript
+const status = new Stream<string>().pipe(state("idle"));
 
-- State is always synchronous - no async delays
-- Setting `.state.value` immediately triggers listeners
-- Source stream values update internal state
-- Composable with all other transformers
+status.listen((s) => console.log(s));
+
+status.state.value = "loading"; // State becomes "loading", logs "loading"
+status.push("Retrying..."); // Logs "Retrying...", state stays "loading"
+
+console.log(status.state.value); // "loading"
+```
+
+**Use cases:** Temporary notifications, loading indicators, validation messages.
+
+## Performance
+
+- **Overhead**: Minimal - just getter/setter
+- **Synchronous**: No async delays
+- **Memory**: O(1) - stores single value
+
+## Related
+
+- [gate](../gate/gate.md) - Manual flow control
+- [cache](../cache/cache.md) - Store multiple values
+- [effect](../effect/effect.md) - Reactive side effects

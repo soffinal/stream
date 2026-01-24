@@ -1,56 +1,80 @@
-# Flat Transformer
+# flat
 
-## Event Multiplication
+Flattens arrays into individual values.
 
-The `flat` transformer converts array events into individual events - essentially `Array.prototype.flat()` for streams.
-
-**Core Concept**: 1 array event → N individual events
-
-## Usage
+## Type
 
 ```typescript
-stream.pipe(flat(depth?));
+function flat<T>(depth?: number): Stream.Transformer<Stream<T>, Stream<FlatArray<T, depth>>>;
 ```
 
-- **Input**: `Stream<T[]>`
-- **Output**: `Stream<T>`
-- **Transformation**: Each array becomes separate events
+## Behavior
 
-## Basic Example
+- **Array to values**: Each array becomes separate events
+- **Depth control**: Optional depth parameter for nested arrays
+- **Order preserved**: Values emit in array order
+- **Type-safe**: Full TypeScript inference
+
+## Use Cases
+
+### 1. Basic Flattening
 
 ```typescript
-const arrayStream = new Stream<number[]>();
-const flattened = arrayStream.pipe(flat());
+const arrays = new Stream<number[]>();
+const numbers = arrays.pipe(flat());
 
-arrayStream.push([1, 2, 3]);
-// Emits: 1, 2, 3 as separate events
+numbers.listen((n) => console.log(n));
 
-flattened.listen((value) => console.log(value));
-// Logs: 1, 2, 3
+arrays.push([1, 2, 3]);
+// Output: 1, 2, 3
 ```
 
-## Depth Control
+### 2. Nested Arrays
 
 ```typescript
 const nested = new Stream<number[][]>();
-const flattened = nested.pipe(flat(1)); // Flatten 2 levels
+const flattened = nested.pipe(flat(1));
+
+flattened.listen((n) => console.log(n));
 
 nested.push([
   [1, 2],
   [3, 4],
 ]);
-// Emits: 1, 2, 3, 4 as separate events
+// Output: 1, 2, 3, 4
 ```
 
-## Common Pattern
+### 3. Map then Flatten
 
 ```typescript
-// Map then flatten
 const sentences = new Stream<string>();
-const characters = sentences.pipe(map({}, (_, s) => [s.split(""), {}])).pipe(flat());
+const characters = sentences.pipe(map((s) => s.split(""))).pipe(flat());
+
+characters.listen((c) => console.log(c));
 
 sentences.push("hello");
-// Emits: 'h', 'e', 'l', 'l', 'o' as separate events
+// Output: 'h', 'e', 'l', 'l', 'o'
 ```
 
-That's it. Simple event multiplication for arrays.
+### 4. Batch Processing
+
+```typescript
+const batches = new Stream<Request[]>();
+const requests = batches.pipe(flat());
+
+requests.listen(processRequest);
+
+batches.push([req1, req2, req3]); // Each processed individually
+```
+
+## Performance
+
+- **Overhead**: Minimal - just array iteration
+- **Memory**: O(1) - no buffering
+- **Synchronous**: All values emitted immediately
+
+## Related
+
+- [map](../map/map.md) - Transform values
+- [buffer](../buffer/buffer.md) - Collect into arrays
+- [merge](../merge/merge.md) - Combine streams
