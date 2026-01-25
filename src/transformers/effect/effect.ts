@@ -23,32 +23,45 @@ import { map } from "../map";
  * }, { strategy: 'sequential' })) // Wait for each effect
  * ```
  */
-export const effect: effect.Effect = <VALUE, STATE extends Record<string, unknown>>(
+export const effect: effect.Effect = <VALUE, STATE extends Record<string, unknown>, ARGS = any>(
   initialStateOrCallback: STATE | effect.Callback<VALUE>,
   statefulCallbackOrOptions?: effect.StatefulCallback<VALUE, STATE> | effect.Options,
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE>> => {
-  if (typeof statefulCallbackOrOptions === "function" && typeof initialStateOrCallback !== "function") {
-    return map<VALUE, STATE, VALUE>(initialStateOrCallback, async (state, value) => {
-      return [value, await statefulCallbackOrOptions(state, value)];
-    });
+  const [callback, options, initialState, statfulCallback] =
+    typeof initialStateOrCallback === "function"
+      ? [initialStateOrCallback, statefulCallbackOrOptions as effect.Options<ARGS>, undefined, undefined]
+      : [
+          undefined,
+          undefined,
+          initialStateOrCallback,
+          statefulCallbackOrOptions as effect.StatefulCallback<VALUE, STATE>,
+        ];
+
+  if (callback) {
+    return map<VALUE, VALUE, ARGS>(async (value, args) => {
+      await callback(value, args);
+      return value;
+    }, options);
   }
 
-  return map<VALUE, VALUE>(async (value) => {
-    await (initialStateOrCallback as effect.Callback<VALUE>)(value);
-    return value;
-  }, statefulCallbackOrOptions as effect.Options);
+  return map<VALUE, STATE, VALUE>(initialState, async (state, value) => {
+    return [value, await statfulCallback(state, value)];
+  });
 };
 
 export namespace effect {
-  export type Options = { strategy: "sequential" | "concurrent-unordered" | "concurrent-ordered" };
-  export type Callback<VALUE = unknown> = (value: VALUE) => any | Promise<any>;
+  export type Options<ARGS = any> = map.Options<ARGS>;
+  export type Callback<VALUE = unknown, ARGS = any> = (value: VALUE, args: ARGS) => any | Promise<any>;
   export type StatefulCallback<VALUE = unknown, STATE extends Record<string, unknown> = {}> = (
     state: STATE,
     value: VALUE,
   ) => STATE | Promise<STATE>;
 
   export interface Effect {
-    <VALUE>(callback: Callback<VALUE>, options?: Options): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
+    <VALUE, ARGS>(
+      callback: Callback<VALUE, ARGS>,
+      options?: Options<ARGS>,
+    ): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
 
     // Stateful operations must be sequential
     <VALUE, STATE extends Record<string, unknown> = {}>(
