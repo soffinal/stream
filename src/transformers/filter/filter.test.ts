@@ -397,7 +397,7 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             return value > 2;
           },
-          { strategy: "sequential" },
+          { execution: "sequential" },
         ),
       );
 
@@ -422,7 +422,9 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return value > 2;
           },
-          { strategy: "concurrent-unordered" },
+          {
+            execution: "concurrent",
+          },
         ),
       );
 
@@ -449,7 +451,7 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return value > 2;
           },
-          { strategy: "concurrent-ordered" },
+          { execution: "concurrent-ordered" },
         ),
       );
 
@@ -488,7 +490,7 @@ describe("filter transformer", () => {
             if (processedCount >= 3) return; // Terminate after 3 items
             return value > 0;
           },
-          { strategy: "concurrent-unordered" },
+          { execution: "concurrent" },
         ),
       );
 
@@ -513,7 +515,7 @@ describe("filter transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return item.value.length > 3;
           },
-          { strategy: "concurrent-ordered" },
+          { execution: "concurrent-ordered" },
         ),
       );
 

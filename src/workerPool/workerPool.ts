@@ -18,6 +18,7 @@ class WorkerPoolManager {
   private pendingTasks = new Map<string, Task<any, any>>();
   private maxWorkers = 4; // Configurable
   private taskCounter = 0;
+  private fnCounter = 0;
 
   private constructor() {}
 
@@ -33,19 +34,22 @@ class WorkerPoolManager {
       const functions = new Map();
       
       self.onmessage = async (e) => {
-        const { taskId, fnString, value, args } = e.data;
+        const { type, fnId, fnString, args, taskId, value } = e.data;
         
-        try {
-          let fn = functions.get(fnString);
-          if (!fn) {
-            fn = eval(\`(\${fnString})\`);
-            functions.set(fnString, fn);
+        if (type === 'register') {
+          const fn = eval(\`(\${fnString})\`);
+          functions.set(fnId, { fn, args });
+          return;
+        }
+        
+        if (type === 'execute') {
+          try {
+            const { fn, args } = functions.get(fnId);
+            const result = await fn(value, args);
+            self.postMessage({ taskId, result });
+          } catch (error) {
+            self.postMessage({ taskId, error: error.message });
           }
-          
-          const result = await fn(value, args);
-          self.postMessage({ taskId, result });
-        } catch (error) {
-          self.postMessage({ taskId, error: error.message });
         }
       };
     `;
@@ -83,6 +87,31 @@ class WorkerPoolManager {
     }
     // Round-robin selection
     return this.workers[this.taskCounter % this.workers.length];
+  }
+
+  register<T, U>(fn: (value: T, args?: any) => U | Promise<U>, args?: any) {
+    const fnId = `fn-${this.fnCounter++}`;
+    const fnString = fn.toString();
+
+    // Register in all workers
+    this.workers.forEach(w => {
+      w.postMessage({ type: 'register', fnId, fnString, args });
+    });
+
+    return {
+      fnId,
+      execute: (value: T) => this.executeById<T, U>(fnId, value)
+    };
+  }
+
+  private executeById<T, U>(fnId: string, value: T): Promise<U> {
+    const taskId = `task-${this.taskCounter++}`;
+    const worker = this.getWorker();
+
+    return new Promise<U>((resolve, reject) => {
+      this.pendingTasks.set(taskId, { id: taskId, fn: '', value, resolve, reject });
+      worker.postMessage({ type: 'execute', fnId, taskId, value });
+    });
   }
 
   async execute<T, U>(fn: (value: T, args?: any) => U | Promise<U>, value: T, args?: any): Promise<U> {

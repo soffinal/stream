@@ -214,6 +214,38 @@ stream.pipe(
 
 **[📖 Full Documentation →](src/transformers/map/map.md)**
 
+## Execution Strategies
+
+All transformers (`map`, `filter`, `effect`) support multiple execution strategies:
+
+```typescript
+// Sequential (default) - one at a time, main thread
+stream.pipe(map(x => x * 2))
+
+// Concurrent - all at once, main thread, unordered
+stream.pipe(map(async x => await fetch(x), { execution: 'concurrent' }))
+
+// Concurrent-ordered - all at once, main thread, maintains order
+stream.pipe(map(async x => await fetch(x), { execution: 'concurrent-ordered' }))
+
+// Parallel - Web Workers, unordered (fastest for CPU-intensive)
+stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }))
+
+// Parallel-ordered - Web Workers, maintains order
+stream.pipe(map(x => heavyComputation(x), { execution: 'parallel-ordered' }))
+```
+
+**With args (for parallel strategies):**
+
+```typescript
+stream.pipe(map((x, args) => x * args.multiplier, {
+  execution: 'parallel',
+  args: { multiplier: 2 }
+}))
+```
+
+**Worker Pool**: Parallel strategies use a shared pool of 4 Web Workers. Functions are registered once (not serialized per event) for optimal performance.
+
 ### merge - Combine Streams
 
 ```typescript

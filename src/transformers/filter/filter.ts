@@ -1,121 +1,67 @@
 import { Stream } from "../../stream.ts";
+import { map } from "../map/map.ts";
 
 export const filter: filter.Filter = <
   VALUE,
   STATE extends Record<string, unknown> = {},
   FILTERED extends VALUE = VALUE,
+  ARGS = any,
 >(
-  initialStateOrPredicate: STATE | filter.Predicate<VALUE> | filter.GuardPredicate<VALUE, FILTERED>,
+  initialStateOrPredicate: STATE | filter.Predicate<VALUE, ARGS> | filter.GuardPredicate<VALUE, FILTERED>,
   statefulPredicateOrOptions?:
     | filter.StatefulPredicate<VALUE, STATE>
     | filter.StatefulGuardPredicate<VALUE, STATE, FILTERED>
-    | filter.Options,
+    | filter.Options<ARGS>,
 ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>> => {
+  const [predicate, options, initalState, statefulPredicate] =
+    typeof initialStateOrPredicate === "function"
+      ? [
+          initialStateOrPredicate as filter.Predicate<VALUE, ARGS>,
+          statefulPredicateOrOptions as filter.Options<ARGS>,
+          undefined,
+          undefined,
+        ]
+      : [
+          undefined,
+          undefined,
+          initialStateOrPredicate,
+          statefulPredicateOrOptions as filter.StatefulPredicate<VALUE, STATE>,
+        ];
+
   return (stream: Stream<VALUE>): Stream<FILTERED> => {
-    if (!statefulPredicateOrOptions || typeof statefulPredicateOrOptions === "object") {
-      const { strategy = "sequential" } = statefulPredicateOrOptions ?? {};
+    // Use map to handle execution strategies
 
-      const predicate = initialStateOrPredicate as filter.Predicate<VALUE>;
-
-      if (strategy === "sequential") {
-        return new Stream<FILTERED>(async function* () {
-          for await (const value of stream) {
-            const result = await predicate(value);
-            if (result) yield value as FILTERED;
-            if (result === undefined) return;
-          }
-        });
-      }
-
-      if (strategy === "concurrent-unordered") {
-        return new Stream<FILTERED>(async function* () {
-          const ABORT = Symbol.for("__abort");
-
-          let queue = new Array<FILTERED | typeof ABORT>();
-          let resolver: Function | undefined;
-
-          const abort = stream.listen(async (value) => {
-            const result = await predicate(value);
-            if (result !== false) {
-              result === undefined ? queue.push(ABORT) : queue.push(value as FILTERED);
-              resolver?.();
-              resolver = undefined;
-            }
-          });
-
-          try {
-            while (true) {
-              if (queue.length) {
-                const value = queue.shift()!;
-                if (value === ABORT) break;
-                yield value;
-              } else {
-                await new Promise<void>((r) => (resolver = r));
-              }
-            }
-          } finally {
-            queue.length = 0;
-            abort();
-            resolver = undefined;
-          }
-        });
-      }
-
-      if (strategy === "concurrent-ordered") {
-        return new Stream<FILTERED>(async function* () {
-          let queue = new Array<{ resultPromise: boolean | void | Promise<boolean | void>; value: VALUE }>();
-          let resolver: Function | undefined;
-
-          const abort = stream.listen((value) => {
-            const pormise = predicate(value);
-            queue.push({ resultPromise: pormise, value });
-            (async () => {
-              await pormise;
-              resolver?.();
-              resolver = undefined;
-            })();
-          });
-
-          try {
-            while (true) {
-              if (queue.length) {
-                const { resultPromise, value } = queue.shift()!;
-                const result = await resultPromise;
-                if (result) yield value as FILTERED;
-                if (result === undefined) break;
-              } else {
-                await new Promise<void>((r) => (resolver = r));
-              }
-            }
-          } finally {
-            queue.length = 0;
-            abort();
-            resolver = undefined;
-          }
-        });
-      }
-    }
-
-    const predicate = statefulPredicateOrOptions as filter.StatefulGuardPredicate<VALUE, STATE>;
-
+    const mapped = predicate
+      ? stream.pipe(
+          map(async (value, args) => {
+            return [value, await predicate(value, args)] as [VALUE, boolean | undefined];
+          }, options),
+        )
+      : stream.pipe(
+          map(initalState!, async (state, value) => {
+            const result = await statefulPredicate(state, value);
+            return (result ? [[value, result[0]], result[1]] : [[value, undefined], state]) as [
+              [VALUE, boolean | undefined],
+              STATE,
+            ];
+          }),
+        );
+    // Filter based on boolean
     return new Stream<FILTERED>(async function* () {
-      let currentState = initialStateOrPredicate as STATE;
-      for await (const value of stream) {
-        const result = await predicate(currentState, value);
-        if (!result) return;
-        const [emit, state] = result;
-        currentState = state;
-        if (emit) {
-          yield value as FILTERED;
-        }
+      for await (const [value, shouldPass] of mapped) {
+        if (shouldPass === undefined) break;
+        if (shouldPass) yield value as FILTERED;
       }
     });
   };
 };
 
 export namespace filter {
-  export type Options = { strategy: "sequential" | "concurrent-unordered" | "concurrent-ordered" };
-  export type Predicate<VALUE = unknown> = (value: VALUE) => boolean | void | Promise<boolean | void>;
+  export type Options<ARGS = any> = map.Options<ARGS>;
+  export type Predicate<VALUE = unknown, ARGS = any> = (
+    value: VALUE,
+    args: ARGS,
+  ) => boolean | void | Promise<boolean | void>;
   export type GuardPredicate<VALUE = unknown, FILTERED extends VALUE = VALUE> = (value: VALUE) => value is FILTERED;
   export type StatefulPredicate<VALUE = unknown, STATE extends Record<string, unknown> = {}> = (
     state: STATE,
@@ -133,7 +79,10 @@ export namespace filter {
       predicate: GuardPredicate<VALUE, FILTERED>,
     ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>>;
 
-    <VALUE>(predicate: Predicate<VALUE>, options?: Options): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
+    <VALUE, ARGS>(
+      predicate: Predicate<VALUE>,
+      options?: Options<ARGS>,
+    ): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
 
     //here we have not options because stateful operations must be sequential
     <VALUE, STATE extends Record<string, unknown> = {}>(

@@ -1,6 +1,42 @@
 import { Stream } from "../../stream.ts";
 import { WorkerPool } from "../../workerPool/workerPool.ts";
 
+/**
+ * Transform values with optional execution strategies
+ * 
+ * @example
+ * ```typescript
+ * // Simple transformation
+ * stream.pipe(map(x => x * 2))
+ * 
+ * // Async transformation
+ * stream.pipe(map(async x => await fetch(x)))
+ * 
+ * // Concurrent execution (main thread, unordered)
+ * stream.pipe(map(async x => await process(x), { execution: 'concurrent' }))
+ * 
+ * // Concurrent ordered (main thread, maintains order)
+ * stream.pipe(map(async x => await process(x), { execution: 'concurrent-ordered' }))
+ * 
+ * // Parallel execution (Web Workers, unordered - fastest)
+ * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }))
+ * 
+ * // Parallel ordered (Web Workers, maintains order)
+ * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel-ordered' }))
+ * 
+ * // With args (for workers)
+ * stream.pipe(map((x, args) => x * args.multiplier, { 
+ *   execution: 'parallel',
+ *   args: { multiplier: 2 }
+ * }))
+ * 
+ * // Stateful transformation
+ * stream.pipe(map({ sum: 0 }, (state, x) => {
+ *   const newSum = state.sum + x;
+ *   return [newSum, { sum: newSum }];
+ * }))
+ * ```
+ */
 export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPED, ARGS>(
   initialStateOrMapper: STATE | map.Mapper<VALUE, MAPPED, ARGS>,
   statefulMapperOrOptions?: map.StatefulMapper<VALUE, STATE, MAPPED> | map.Options<ARGS>,
@@ -20,9 +56,10 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
           statefulMapperOrOptions as map.StatefulMapper<VALUE, STATE, MAPPED>,
         ];
 
+  const { execution = "sequential", args } = options ?? {};
+
   return (stream: Stream<VALUE>): Stream<MAPPED> => {
     if (mapper) {
-      const { execution, args } = options ?? {};
       const mapper = initialStateOrMapper as map.Mapper<VALUE, MAPPED, ARGS>;
 
       // Parallel (workers)
@@ -34,36 +71,54 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
 
         if (execution === "parallel") {
           return new Stream<MAPPED>(async function* () {
-            let queue = new Array<MAPPED>();
-            let resolver: Function | undefined;
+            const { execute } = WorkerPool.register(mapper, args);
+            const pendings: Promise<MAPPED>[] = [];
+            let resolve: Function | undefined;
 
-            const abort = stream.listen(async (value) => {
-              const result = await WorkerPool.execute(mapper, value, args);
-              queue.push(result);
-              resolver?.();
-              resolver = undefined;
+            const abort = stream.listen((value) => {
+              pendings.push(execute(value));
+              resolve?.();
             });
 
             try {
               while (true) {
-                if (queue.length) {
-                  yield queue.shift()!;
+                if (pendings.length) {
+                  yield await pendings.shift()!;
                 } else {
-                  await new Promise<void>((r) => (resolver = r));
+                  await new Promise((r) => (resolve = r));
                 }
               }
             } finally {
-              queue.length = 0;
+              pendings.length = 0;
               abort();
-              resolver = undefined;
+              resolve = undefined;
             }
           });
         }
 
         if (execution === "parallel-ordered") {
           return new Stream<MAPPED>(async function* () {
-            for await (const value of stream) {
-              yield await WorkerPool.execute(mapper, value, args);
+            const { execute } = WorkerPool.register(mapper, args);
+            const pendings: Promise<MAPPED>[] = [];
+            let resolve: Function | undefined;
+
+            const abort = stream.listen((value) => {
+              pendings.push(execute(value));
+              resolve?.();
+            });
+
+            try {
+              while (true) {
+                if (pendings.length) {
+                  yield await pendings.shift()!;
+                } else {
+                  await new Promise((r) => (resolve = r));
+                }
+              }
+            } finally {
+              pendings.length = 0;
+              abort();
+              resolve = undefined;
             }
           });
         }
@@ -92,66 +147,61 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
       }
       function concurrent() {
         return new Stream<MAPPED>(async function* () {
-          let queue = new Array<MAPPED>();
-          let resolver: Function | undefined;
+          let pendings = new Array<MAPPED>();
+          let resolve: Function | undefined;
 
           const abort = stream.listen(async (value) => {
-            queue.push(await mapper(value, args!));
-            resolver?.();
-            resolver = undefined;
+            pendings.push(await mapper(value, args!));
+            resolve?.();
           });
 
           try {
             while (true) {
-              if (queue.length) {
-                yield queue.shift()!;
+              if (pendings.length) {
+                yield pendings.shift()!;
               } else {
-                await new Promise<void>((r) => (resolver = r));
+                await new Promise<void>((r) => (resolve = r));
               }
             }
           } finally {
-            queue.length = 0;
+            pendings.length = 0;
             abort();
-            resolver = undefined;
+            resolve?.();
+            resolve = undefined;
           }
         });
       }
       function concurrentOrdered() {
-        return new Stream<MAPPED>(async function* () {
-          let queue = new Array<MAPPED | Promise<MAPPED>>();
-          let resolver: Function | undefined;
+        const output = new Stream<MAPPED>(async function* () {
+          const pendings: (MAPPED | Promise<MAPPED>)[] = [];
+          let resolve: Function | undefined;
 
-          const abort = stream.listen((value) => {
-            const promise = mapper(value, args!);
-
-            queue.push(promise);
-
-            (async () => {
-              await promise;
-              resolver?.();
-              resolver = undefined;
-            })();
+          let abort = stream.listen((value) => {
+            pendings.push(mapper(value, args!));
+            resolve?.();
           });
 
           try {
             while (true) {
-              if (queue.length) {
-                yield await queue.shift()!;
+              if (pendings.length) {
+                yield await pendings.shift()!;
               } else {
-                await new Promise<void>((r) => (resolver = r));
+                await new Promise((r) => (resolve = r));
               }
             }
           } finally {
-            queue.length = 0;
+            pendings.length = 0;
             abort();
-            resolver = undefined;
+            resolve?.();
+            resolve = undefined;
           }
         });
+        return output;
       }
     }
 
     return new Stream<MAPPED>(async function* () {
-      let currentState = initialStateOrMapper as STATE;
+      let currentState = initalState as STATE;
       for await (const value of stream) {
         const [mapped, state] = await (statefulMapper as map.StatefulMapper<VALUE, STATE, MAPPED>)(currentState, value);
         currentState = state;
@@ -194,7 +244,3 @@ export namespace map {
     ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>>;
   }
 }
-
-// const stream = new Stream<number>();
-
-// const mapped = stream.pipe(map((v, d) => v.toFixed(), { execution: "parallel" }));

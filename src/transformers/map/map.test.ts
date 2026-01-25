@@ -431,7 +431,7 @@ describe("map transformer", () => {
       mapped.listen((value) => results.push(value));
 
       stream.push(1, 2, 3);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 35));
 
       // Results should maintain original order despite different delays
       expect(results).toEqual([2, 4, 6]);

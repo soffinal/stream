@@ -1,165 +1,236 @@
 # map
 
-Transform values flowing through a stream. Supports async transformations, type conversions, and stateful operations.
+Transform stream values with multiple execution strategies.
 
-## Type
+## Execution Strategies
 
-```typescript
-function map<T, U>(
-  mapper: (value: T) => U | Promise<U>,
-  options?: { strategy?: "sequential" | "concurrent-unordered" | "concurrent-ordered" },
-): Stream.Transformer<Stream<T>, Stream<U>>;
+- **sequential** (default): Process one at a time on main thread
+- **concurrent**: Process all concurrently on main thread, emit as completed (unordered)
+- **concurrent-ordered**: Process all concurrently on main thread, maintain order
+- **parallel**: Process in Web Workers, emit as completed (unordered, fastest)
+- **parallel-ordered**: Process in Web Workers, maintain order
 
-function map<T, STATE extends Record<string, unknown>, U>(
-  initialState: STATE,
-  mapper: (state: STATE, value: T) => [U, STATE] | Promise<[U, STATE]>,
-): Stream.Transformer<Stream<T>, Stream<U>>;
-```
-
-## Behavior
-
-- **Transform**: Converts each value to a new value
-- **Type conversion**: Full TypeScript type inference
-- **Async**: Supports async mappers with strategy options
-- **Stateful**: Track state across values (optional)
-- **Chainable**: Compose multiple transformations
-
-## Use Cases
-
-### 1. Simple Transformations
+## Basic Usage
 
 ```typescript
-stream.pipe(map((n) => n * 2));
-stream.pipe(map((n) => n.toString()));
-stream.pipe(map((user) => user.name));
+// Simple transformation
+stream.pipe(map(x => x * 2))
+
+// Async transformation
+stream.pipe(map(async x => await fetch(x)))
+
+// Type transformation
+stream.pipe(map((x: number) => x.toString()))
 ```
 
-### 2. Type Conversions
+## Execution Strategies
+
+### Sequential (Default)
+
+Process one value at a time on the main thread:
+
+```typescript
+stream.pipe(map(async x => {
+  await delay(100);
+  return x * 2;
+}))
+// Values: [1, 2, 3]
+// Time: ~300ms (100ms each, sequential)
+// Output: [2, 4, 6] (in order)
+```
+
+### Concurrent
+
+Process all values concurrently on main thread, emit as completed:
+
+```typescript
+stream.pipe(map(async x => {
+  await delay(x * 10);
+  return x * 2;
+}, { execution: 'concurrent' }))
+// Values: [3, 1, 2]
+// Delays: [30ms, 10ms, 20ms]
+// Output: [2, 4, 6] (fastest first: 1, 2, 3)
+```
+
+### Concurrent-Ordered
+
+Process all values concurrently on main thread, maintain original order:
+
+```typescript
+stream.pipe(map(async x => {
+  await delay(x * 10);
+  return x * 2;
+}, { execution: 'concurrent-ordered' }))
+// Values: [3, 1, 2]
+// Delays: [30ms, 10ms, 20ms]
+// Time: ~30ms (all concurrent, wait for slowest)
+// Output: [6, 2, 4] (original order maintained)
+```
+
+### Parallel
+
+Process in Web Workers, emit as completed (fastest for CPU-intensive):
+
+```typescript
+stream.pipe(map(x => {
+  // Heavy computation
+  return fibonacci(x);
+}, { execution: 'parallel' }))
+// Offloads to worker pool
+// Output: Results as they complete (unordered)
+```
+
+### Parallel-Ordered
+
+Process in Web Workers, maintain order:
+
+```typescript
+stream.pipe(map(x => {
+  return fibonacci(x);
+}, { execution: 'parallel-ordered' }))
+// Offloads to worker pool
+// Output: Results in original order
+```
+
+## With Args
+
+Pass static arguments to worker functions:
+
+```typescript
+stream.pipe(map((x, args) => x * args.multiplier, {
+  execution: 'parallel',
+  args: { multiplier: 2, offset: 10 }
+}))
+
+// Args are sent once to workers (not per event)
+// Efficient for high-frequency streams
+```
+
+## Stateful Transformation
+
+Maintain state across transformations:
+
+```typescript
+// Running sum
+stream.pipe(map({ sum: 0 }, (state, x) => {
+  const newSum = state.sum + x;
+  return [newSum, { sum: newSum }];
+}))
+// Input: [1, 2, 3]
+// Output: [1, 3, 6]
+
+// With history
+stream.pipe(map({ history: [] }, (state, x) => {
+  const newHistory = [...state.history, x];
+  return [
+    { value: x, count: newHistory.length },
+    { history: newHistory }
+  ];
+}))
+```
+
+## Performance Guide
+
+### When to Use Each Strategy
+
+**Sequential**: 
+- Default, simplest
+- When order matters and operations are fast
+- When operations must be sequential (database transactions)
+
+**Concurrent**:
+- I/O-bound operations (fetch, database queries)
+- When order doesn't matter
+- Multiple independent async operations
+
+**Concurrent-Ordered**:
+- I/O-bound operations where order matters
+- API calls that must return in order
+- Faster than sequential when operations overlap
+
+**Parallel**:
+- CPU-intensive operations (image processing, calculations)
+- When order doesn't matter
+- Heavy computations that block main thread
+
+**Parallel-Ordered**:
+- CPU-intensive operations where order matters
+- Processing queue of heavy tasks
+- Maintains order while offloading CPU work
+
+### Performance Comparison
+
+```typescript
+// Sequential: 300ms total
+stream.pipe(map(async x => {
+  await delay(100);
+  return x;
+}))
+// [1, 2, 3] → 100ms + 100ms + 100ms = 300ms
+
+// Concurrent-Ordered: 100ms total
+stream.pipe(map(async x => {
+  await delay(100);
+  return x;
+}, { execution: 'concurrent-ordered' }))
+// [1, 2, 3] → All start at once, wait 100ms = 100ms
+
+// Parallel: Offloads CPU work
+stream.pipe(map(x => heavyCalc(x), { execution: 'parallel' }))
+// Main thread stays responsive
+```
+
+## Worker Pool
+
+Parallel strategies use a singleton WorkerPool:
+
+- **4 workers** shared across all streams
+- **Function registration**: Functions registered once (not serialized per event)
+- **Automatic fallback**: Falls back to concurrent if workers unavailable
+- **Round-robin**: Load balancing across workers
+
+### How It Works
+
+```typescript
+// Function registered once
+const { execute } = WorkerPool.register(mapper, args);
+
+// Only values sent per event
+stream.listen(value => {
+  execute(value).then(result => output.push(result));
+});
+```
+
+### Benefits
+
+- ✅ Function serialized once (not per event)
+- ✅ Args cached in workers
+- ✅ Smaller messages (just value)
+- ✅ Better performance for high-frequency streams
+- ✅ No worker limit issues (pool manages resources)
+
+## Type Safety
+
+Full TypeScript inference:
 
 ```typescript
 const numbers = new Stream<number>();
 
-const strings = numbers.pipe(map((n) => n.toString()));
-const objects = numbers.pipe(map((n) => ({ value: n, squared: n * n })));
+// Type: Stream<string>
+const strings = numbers.pipe(map(x => x.toString()));
+
+// Type: Stream<boolean>
+const bools = strings.pipe(map(x => x.length > 1));
+
+// With args - fully typed
+const doubled = numbers.pipe(map((x, args) => x * args.multiplier, {
+  execution: 'parallel',
+  args: { multiplier: 2 } // Type inferred
+}));
 ```
 
-### 3. Async Transformations
+## See Also
 
-```typescript
-stream.pipe(
-  map(async (url) => {
-    const response = await fetch(url);
-    return await response.json();
-  }),
-);
-```
-
-### 4. Stateful Transformations
-
-```typescript
-// Running sum
-stream.pipe(
-  map({ sum: 0 }, (state, value) => {
-    const newSum = state.sum + value;
-    return [newSum, { sum: newSum }];
-  }),
-);
-
-// Add indices
-stream.pipe(
-  map({ index: 0 }, (state, value) => {
-    const result = { item: value, index: state.index };
-    return [result, { index: state.index + 1 }];
-  }),
-);
-```
-
-## Options
-
-### strategy
-
-Controls async mapper execution:
-
-**'sequential' (default):**
-
-```typescript
-stream.pipe(
-  map(async (v) => await process(v)),
-);
-// Values processed one at a time
-```
-
-**'concurrent-unordered':**
-
-```typescript
-stream.pipe(
-  map(async (v) => await process(v), { strategy: "concurrent-unordered" }),
-);
-// All values processed concurrently, order not preserved
-```
-
-**'concurrent-ordered':**
-
-```typescript
-stream.pipe(
-  map(async (v) => await process(v), { strategy: "concurrent-ordered" }),
-);
-// All values processed concurrently, order preserved
-```
-
-**Note:** Stateful maps are always sequential (no strategy option).
-
-## Patterns
-
-### Scan (Accumulate)
-
-```typescript
-const scan = <T, U>(fn: (acc: U, value: T) => U, initial: U) =>
-  map<T, { acc: U }, U>({ acc: initial }, (state, value) => {
-    const newAcc = fn(state.acc, value);
-    return [newAcc, { acc: newAcc }];
-  });
-
-stream.pipe(scan((sum, n) => sum + n, 0)); // Running sum
-```
-
-### Enrich
-
-```typescript
-const enrich = <T>(enrichFn: (item: T) => Promise<any>) =>
-  map(async (item: T) => {
-    const enrichment = await enrichFn(item);
-    return { ...item, ...enrichment };
-  });
-
-users.pipe(
-  enrich(async (user) => ({
-    avatar: await getAvatar(user.id),
-  })),
-);
-```
-
-### Sliding Window
-
-```typescript
-const slidingWindow = <T>(size: number) =>
-  map<T, { window: T[] }, T[]>({ window: [] }, (state, value) => {
-    const newWindow = [...state.window, value].slice(-size);
-    return [newWindow, { window: newWindow }];
-  });
-
-stream.pipe(slidingWindow(3)); // Last 3 items
-```
-
-## Performance
-
-- **Overhead**: Minimal - just mapper execution
-- **Async**: Can add latency with slow mappers
-- **Stateful**: Slightly more overhead for state management
-- **Memory**: O(1) for stateless, O(state size) for stateful
-
-## Related
-
-- [filter](../filter/filter.md) - Remove values
-- [flat](../flat/flat.md) - Flatten arrays
-- [effect](../effect/effect.md) - Side effects without transformation
+- [filter](../filter/filter.md) - Uses map internally for execution strategies
+- [effect](../effect/effect.md) - Uses map internally for execution strategies
