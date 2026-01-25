@@ -363,7 +363,7 @@ describe("map transformer", () => {
   });
 
   describe("concurrency strategies", () => {
-    it("should handle simple mapper with sequential strategy", async () => {
+    it("should handle simple mapper with sequential execution", async () => {
       const stream = new Stream<number>();
       const mapped = stream.pipe(
         map(
@@ -371,7 +371,7 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             return x * 2;
           },
-          { strategy: "sequential" },
+          { execution: "sequential" },
         ),
       );
 
@@ -384,7 +384,7 @@ describe("map transformer", () => {
       expect(results).toEqual([2, 4, 6]);
     });
 
-    it("should handle simple mapper with concurrent-unordered strategy", async () => {
+    it("should handle simple mapper with concurrent-unordered execution", async () => {
       const stream = new Stream<number>();
       const delays = [30, 10, 20];
       let callIndex = 0;
@@ -396,7 +396,7 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return x * 2;
           },
-          { strategy: "concurrent-unordered" },
+          { execution: "concurrent" },
         ),
       );
 
@@ -411,7 +411,7 @@ describe("map transformer", () => {
       expect(results.sort()).toEqual([2, 4, 6]);
     });
 
-    it("should handle simple mapper with concurrent-ordered strategy", async () => {
+    it("should handle simple mapper with concurrent-ordered execution", async () => {
       const stream = new Stream<number>();
       const delays = [30, 10, 20];
       let callIndex = 0;
@@ -423,7 +423,7 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
             return x * 2;
           },
-          { strategy: "concurrent-ordered" },
+          { execution: "concurrent-ordered" },
         ),
       );
 
@@ -445,7 +445,7 @@ describe("map transformer", () => {
             await new Promise((resolve) => setTimeout(resolve, 5));
             return x.toString();
           },
-          { strategy: "concurrent-unordered" },
+          { execution: "concurrent" },
         ),
       );
 
@@ -472,7 +472,7 @@ describe("map transformer", () => {
               timestamp: Date.now(),
             };
           },
-          { strategy: "concurrent-ordered" },
+          { execution: "concurrent-ordered" },
         ),
       );
 
