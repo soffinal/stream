@@ -4,20 +4,31 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Build reusable components with type-safe events**
+> **Multi-paradigm reactive primitives for modern applications**
 
-Stream provides primitives for building libraries and core features that expose type-safe events. Perfect for library authors and application developers building shared components.
+Stream provides composable primitives that unify multiple programming paradigms - functional reactive, event-driven, dataflow, and data-driven - with native support for parallel (Web Workers) and distributed (network) execution.
+
+**What makes it unique:**
+
+- **Multi-paradigm**: Combine FRP, event-driven, dataflow, and data-driven in one pipeline
+- **Execution agnostic**: Same code runs locally, in workers, or across network
+- **Minimal core**: 1 primitive (Stream), infinite patterns
+- **Type-safe**: Full TypeScript inference across entire pipeline
+- **Composable**: Build complex from simple, no framework lock-in
 
 **When to use:**
-- Building npm packages
-- Creating internal core features  
-- Components with multiple event consumers
-- Decoupled, event-driven architecture
+
+- Building npm packages with type-safe events
+- Event-driven architectures (local or distributed)
+- CPU-intensive operations (parallel execution)
+- Real-time data pipelines
+- Multi-tenant systems with dynamic behavior
 
 **When not to use:**
-- Simple business logic
-- One-off features
-- Linear CRUD operations
+
+- Simple CRUD operations
+- One-off scripts
+- Static business logic
 
 ## Quick Start
 
@@ -37,7 +48,36 @@ events.push("Hello", "World");
 npm install @soffinal/stream
 ```
 
-**[📖 Tutorial: Real-World Examples →](TUTORIAL.md)**
+## Philosophy
+
+Stream explores a new approach to reactive programming: **multi-paradigm composition with execution-agnostic primitives**. Rather than replacing existing tools, it offers an alternative mental model for building event-driven systems.
+
+**Design principles:**
+
+- **Minimal primitive**: 1 core concept (Stream), not a framework
+- **Composability over features**: Build complex from simple, no batteries included
+- **Paradigm agnostic**: Support multiple mental models, don't force one
+- **Execution agnostic**: Same code, different contexts (local, parallel, distributed)
+- **Type safety**: Let TypeScript enforce contracts, fail at compile time
+- **User responsibility**: Explicit over implicit, no magic
+
+**What we don't do:**
+
+- Replace existing tools - we offer an alternative approach
+- Provide every possible operator (compose your own)
+- Hide complexity (you see the data flow)
+- Make decisions for you (you choose paradigms, execution, patterns)
+
+**What we explore:**
+
+- Can multiple paradigms coexist in one system?
+- Can execution context be independent of programming model?
+- Can dynamic configuration enable new patterns?
+- Can one minimal primitive be more powerful than feature-rich frameworks?
+
+**This library demonstrates principles for reactive system design.** The concepts are language-agnostic - understanding the principles enables implementation in any language. If these patterns prove valuable in real-world usage, we'll expand implementations to other languages (Python, Go, Rust, etc.).
+
+The patterns and insights discovered here may prove more valuable than the implementation itself. This is a **research artifact** as much as a production tool.
 
 ## Core Concepts
 
@@ -108,41 +148,6 @@ for await (const value of stream) {
   console.log(value);
   if (done) break;
 }
-```
-
-## Philosophy
-
-**You bring your own utilities:**
-
-This library provides control flow primitives for reactive programming.
-
-```typescript
-import { memoize, debounce } from "lodash";
-import { Stream, map, filter } from "@soffinal/stream";
-
-stream
-  .pipe(map(memoize(expensiveOp))) // lodash memoization
-  .pipe(filter(debounce(validate, 300))) // lodash debounce
-  .pipe(map(customLib.transform)); // any library
-```
-
-**2 primitives**: `Stream` + `pipe`
-
-**11 transformers**: `state`, `gate`, `filter`, `map`, `merge`, `flat`, `zip`, `buffer`, `cache`, `branch`, `effect`
-
-**Hot transformer rule**: `cache` is hot (starts listening immediately). Hot transformers MUST cache - computation happens once, late subscribers get cached results without re-computation.
-
-Everything else you compose yourself. Stream provides the plumbing, you provide the logic.
-
-**Efficient by design**: Transformers execute once per value. Multiple listeners share the same computation:
-
-```typescript
-const expensive = source.pipe(map(async (v) => await heavyComputation(v)));
-
-expensive.listen((v) => updateUI(v));
-expensive.listen((v) => logToAnalytics(v));
-expensive.listen((v) => saveToCache(v));
-// heavyComputation() runs ONCE per value, not 3 times
 ```
 
 ## Transformers
@@ -220,28 +225,30 @@ All transformers (`map`, `filter`, `effect`) support multiple execution strategi
 
 ```typescript
 // Sequential (default) - one at a time, main thread
-stream.pipe(map(x => x * 2))
+stream.pipe(map((x) => x * 2));
 
 // Concurrent - all at once, main thread, unordered
-stream.pipe(map(async x => await fetch(x), { execution: 'concurrent' }))
+stream.pipe(map(async (x) => await fetch(x), { execution: "concurrent" }));
 
 // Concurrent-ordered - all at once, main thread, maintains order
-stream.pipe(map(async x => await fetch(x), { execution: 'concurrent-ordered' }))
+stream.pipe(map(async (x) => await fetch(x), { execution: "concurrent-ordered" }));
 
 // Parallel - Web Workers, unordered (fastest for CPU-intensive)
-stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }))
+stream.pipe(map((x) => heavyComputation(x), { execution: "parallel" }));
 
 // Parallel-ordered - Web Workers, maintains order
-stream.pipe(map(x => heavyComputation(x), { execution: 'parallel-ordered' }))
+stream.pipe(map((x) => heavyComputation(x), { execution: "parallel-ordered" }));
 ```
 
 **With args (for parallel strategies):**
 
 ```typescript
-stream.pipe(map((x, args) => x * args.multiplier, {
-  execution: 'parallel',
-  args: { multiplier: 2 }
-}))
+stream.pipe(
+  map((x, args) => x * args.multiplier, {
+    execution: "parallel",
+    args: { multiplier: 2 },
+  }),
+);
 ```
 
 **Worker Pool**: Parallel strategies use a shared pool of 4 Web Workers. Functions are registered once (not serialized per event) for optimal performance.
@@ -305,21 +312,30 @@ stream.push(1, 2, 3, 4, 5, 6);
 stream.pipe(effect((v) => console.log(v)));
 
 // Async
-stream.pipe(effect(async (v) => {
-  await db.write(v);
-  await sleep(100);
-}));
+stream.pipe(
+  effect(async (v) => {
+    await db.write(v);
+    await sleep(100);
+  }),
+);
 
 // Stateful side effect
-stream.pipe(effect({ count: 0 }, (state, v) => {
-  console.log(`[${state.count}]`, v);
-  return { count: state.count + 1 };
-}));
+stream.pipe(
+  effect({ count: 0 }, (state, v) => {
+    console.log(`[${state.count}]`, v);
+    return { count: state.count + 1 };
+  }),
+);
 
 // Strategy for flow control
-stream.pipe(effect(async (v) => {
-  await db.write(v);
-}, { strategy: 'sequential' })); // Wait for each effect
+stream.pipe(
+  effect(
+    async (v) => {
+      await db.write(v);
+    },
+    { strategy: "sequential" },
+  ),
+); // Wait for each effect
 ```
 
 **[📖 Full Documentation →](src/transformers/effect/effect.md)**
@@ -332,9 +348,9 @@ const analytics = new Stream<number>();
 
 const result = source
   .pipe(filter((n) => n > 0))
-  .pipe(branch(monitoring))   // Branch for monitoring
+  .pipe(branch(monitoring)) // Branch for monitoring
   .pipe(map((n) => n * 2))
-  .pipe(branch(analytics))    // Branch for analytics
+  .pipe(branch(analytics)) // Branch for analytics
   .pipe(buffer(3));
 
 // Independent branches
@@ -358,10 +374,12 @@ setInterval(() => {
 }, 5000);
 
 // Drop strategy
-const cached = stream.pipe(cache({ 
-  maxSize: 10, 
-  dropStrategy: 'oldest' // or 'newest'
-}));
+const cached = stream.pipe(
+  cache({
+    maxSize: 10,
+    dropStrategy: "oldest", // or 'newest'
+  }),
+);
 ```
 
 **[📖 Full Documentation →](src/transformers/cache/cache.md)**
@@ -459,6 +477,182 @@ const throttle = <T>(ms: number) =>
 
 **[📖 See all patterns →](patterns/README.md)**
 
+## Dynamic Configuration Pattern
+
+Transformers can accept configuration either as **static arguments** or **dynamic event properties**. This enables runtime reconfiguration and self-describing events.
+
+### Static Configuration (Default)
+
+```typescript
+// Config set at pipeline construction
+stream
+  .pipe(filter((x) => x > 5))
+  .pipe(map((x) => x * 2))
+  .pipe(buffer(10));
+```
+
+### Dynamic Configuration (Event-Driven)
+
+```typescript
+// Config carried by events
+stream
+  .pipe(map((x) => ({ value: x, predicate: (v) => v > 5 })))
+  .pipe(filter) // No args = reads event.predicate
+  .pipe(map((x) => ({ value: x.value, mapper: (v) => v * 2 })))
+  .pipe(map); // No args = reads event.mapper
+```
+
+### The Convention
+
+**Transformer with arguments** = Static configuration
+
+```typescript
+filter(predicate); // Static: predicate set at construction
+map(mapper); // Static: mapper set at construction
+buffer(size); // Static: size set at construction
+```
+
+**Transformer without arguments** = Dynamic configuration (reads from event)
+
+```typescript
+filter; // Dynamic: reads event.predicate
+map; // Dynamic: reads event.mapper
+buffer; // Dynamic: reads event.size
+```
+
+### Single Map Configures Pipeline
+
+One map can configure multiple downstream transformers:
+
+```typescript
+stream
+  .pipe(
+    map((event) => ({
+      value: event.data,
+      predicate: (v) => v > event.threshold,
+      mapper: (v) => v * event.multiplier,
+      size: event.urgent ? 1 : 50,
+    })),
+  )
+  .pipe(filter) // Uses event.predicate
+  .pipe(map) // Uses event.mapper
+  .pipe(buffer); // Uses event.size
+```
+
+### Type Safety
+
+TypeScript enforces the entire pipeline contract at compile time:
+
+```typescript
+// ✅ Valid - all required properties present
+stream
+  .pipe(map(x => ({ value: x, predicate: (v) => v > 0 })))
+  .pipe(filter)  // Compiles
+
+// ❌ Error at filter - missing predicate
+stream
+  .pipe(map(x => ({ value: x })))
+  .pipe(filter)  // Type error: missing 'predicate' property
+
+// ❌ Error at map - config lost after buffer
+stream
+  .pipe(map(x => ({ value: x, predicate: ..., mapper: ... })))
+  .pipe(filter)
+  .pipe(buffer)  // Returns T[] - config lost
+  .pipe(map)     // Type error: T[] doesn't have 'mapper'
+```
+
+### Pipeline Boundaries
+
+Transformers that change structure create natural boundaries:
+
+```typescript
+// buffer creates boundary - must reshape after
+stream
+  .pipe(map(x => ({ value: x, predicate: ..., size: 10 })))
+  .pipe(filter)
+  .pipe(buffer)   // T[] - config lost
+  .pipe(map(arr => ({ value: arr, mapper: ... })))  // Reshape
+  .pipe(map)      // ✅ Works
+```
+
+**Boundary transformers:**
+
+- `buffer` → arrays
+- `flat` → unwraps arrays
+- `zip` → tuples
+- `merge` → union types
+
+**User responsibility**: Reshape after boundary transformers to continue dynamic configuration.
+
+### Real-World Examples
+
+**Adaptive rate limiting:**
+
+```typescript
+requests
+  .pipe(
+    map((req) => ({
+      value: req,
+      bufferSize: req.user.tier === "premium" ? 1 : 100,
+    })),
+  )
+  .pipe(buffer()); // Premium: instant, free: batched
+```
+
+**Dynamic routing:**
+
+```typescript
+events
+  .pipe(
+    map((e) => ({
+      value: e,
+      predicate: (v) => v.destination === currentNode,
+    })),
+  )
+  .pipe(filter()); // Route based on event metadata
+```
+
+**Per-event execution strategy:**
+
+```typescript
+tasks
+  .pipe(
+    map((task) => ({
+      value: task,
+      execution: task.priority === "urgent" ? "sequential" : "parallel",
+    })),
+  )
+  .pipe(map()); // Urgent: immediate, normal: workers
+```
+
+**Multi-tenant processing:**
+
+```typescript
+requests
+  .pipe(
+    map((req) => ({
+      value: req,
+      validation: tenants[req.tenantId].schema,
+      rateLimit: tenants[req.tenantId].limit,
+    })),
+  )
+  .pipe(validate()) // Per-tenant schemas
+  .pipe(throttle()); // Per-tenant limits
+```
+
+### Why This Matters
+
+**Events become instructions** - they carry both data and processing metadata. This enables:
+
+- **Runtime reconfiguration**: Change behavior without rebuilding pipeline
+- **Self-describing data**: Events carry their own processing rules
+- **Adaptive systems**: Behavior changes based on event characteristics
+- **Multi-tenant**: Different processing per tenant/user/context
+- **A/B testing**: Different algorithms per experiment group
+
+This pattern transforms streams into **programmable execution engines** where events control how they're processed.
+
 ## Forwarding Pattern
 
 When you need to forward all values from one stream to another:
@@ -478,7 +672,7 @@ source.listen(target.push.bind(target));
 ```typescript
 class RPCClient {
   private requests = new Stream<Request>();
-  
+
   constructor(private transport: Transport) {
     // Forward requests to transport
     this.requests.listen(transport.outgoing.push.bind(transport.outgoing));
@@ -651,7 +845,14 @@ type Abort = (() => void) & Disposable;
 type Transformer<T, U> = (stream: Stream<T>) => Stream<U>;
 type State<T> = Stream<T> & { state: { value: T } };
 type Gate<T> = Stream<T> & { gate: { open(): void; close(): void; readonly isOpen: boolean } };
-type Cache<T> = Stream<T> & { cache: { readonly values: T[]; readonly size: number | undefined; readonly dropStrategy: 'oldest' | 'newest'; clear(): void } };
+type Cache<T> = Stream<T> & {
+  cache: {
+    readonly values: T[];
+    readonly size: number | undefined;
+    readonly dropStrategy: "oldest" | "newest";
+    clear(): void;
+  };
+};
 ```
 
 ## Performance

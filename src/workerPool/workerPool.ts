@@ -61,7 +61,7 @@ class WorkerPoolManager {
     worker.onmessage = (e) => {
       const { taskId, result, error } = e.data;
       const task = this.pendingTasks.get(taskId);
-      
+
       if (task) {
         this.pendingTasks.delete(taskId);
         if (error) {
@@ -73,7 +73,7 @@ class WorkerPoolManager {
     };
 
     worker.onerror = (e) => {
-      console.error('Worker error:', e);
+      console.error("Worker error:", e);
     };
 
     return worker;
@@ -94,13 +94,13 @@ class WorkerPoolManager {
     const fnString = fn.toString();
 
     // Register in all workers
-    this.workers.forEach(w => {
-      w.postMessage({ type: 'register', fnId, fnString, args });
+    this.workers.forEach((w) => {
+      w.postMessage({ type: "register", fnId, fnString, args });
     });
 
     return {
       fnId,
-      execute: (value: T) => this.executeById<T, U>(fnId, value)
+      execute: (value: T) => this.executeById<T, U>(fnId, value),
     };
   }
 
@@ -109,8 +109,8 @@ class WorkerPoolManager {
     const worker = this.getWorker();
 
     return new Promise<U>((resolve, reject) => {
-      this.pendingTasks.set(taskId, { id: taskId, fn: '', value, resolve, reject });
-      worker.postMessage({ type: 'execute', fnId, taskId, value });
+      this.pendingTasks.set(taskId, { id: taskId, fn: "", value, resolve, reject });
+      worker.postMessage({ type: "execute", fnId, taskId, value });
     });
   }
 
@@ -126,7 +126,7 @@ class WorkerPoolManager {
   }
 
   terminate() {
-    this.workers.forEach(w => w.terminate());
+    this.workers.forEach((w) => w.terminate());
     this.workers = [];
     this.pendingTasks.clear();
   }

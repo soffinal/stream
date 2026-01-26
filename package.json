@@ -20,7 +20,7 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "description": "Composable reactive primitives for TypeScript",
+  "description": "Multi-paradigm reactive primitives for modern applications",
   "files": [
     "dist",
     "src/transformers/**/*.md",
