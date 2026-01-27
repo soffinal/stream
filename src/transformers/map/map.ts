@@ -3,33 +3,33 @@ import { WorkerPool } from "../../workerPool/workerPool.ts";
 
 /**
  * Transform values with optional execution strategies
- * 
+ *
  * @example
  * ```typescript
  * // Simple transformation
  * stream.pipe(map(x => x * 2))
- * 
+ *
  * // Async transformation
  * stream.pipe(map(async x => await fetch(x)))
- * 
+ *
  * // Concurrent execution (main thread, unordered)
  * stream.pipe(map(async x => await process(x), { execution: 'concurrent' }))
- * 
+ *
  * // Concurrent ordered (main thread, maintains order)
  * stream.pipe(map(async x => await process(x), { execution: 'concurrent-ordered' }))
- * 
+ *
  * // Parallel execution (Web Workers, unordered - fastest)
  * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }))
- * 
+ *
  * // Parallel ordered (Web Workers, maintains order)
  * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel-ordered' }))
- * 
+ *
  * // With args (for workers)
- * stream.pipe(map((x, args) => x * args.multiplier, { 
+ * stream.pipe(map((x, args) => x * args.multiplier, {
  *   execution: 'parallel',
  *   args: { multiplier: 2 }
  * }))
- * 
+ *
  * // Stateful transformation
  * stream.pipe(map({ sum: 0 }, (state, x) => {
  *   const newSum = state.sum + x;
@@ -72,26 +72,19 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
         if (execution === "parallel") {
           return new Stream<MAPPED>(async function* () {
             const { execute } = WorkerPool.register(mapper, args);
-            const pendings: Promise<MAPPED>[] = [];
-            let resolve: Function | undefined;
 
-            const abort = stream.listen((value) => {
-              pendings.push(execute(value));
-              resolve?.();
+            const output = new Stream<MAPPED>();
+            const abort = stream.listen(async (value) => {
+              output.push(await execute(value));
             });
 
             try {
-              while (true) {
-                if (pendings.length) {
-                  yield await pendings.shift()!;
-                } else {
-                  await new Promise((r) => (resolve = r));
-                }
+              for await (const mapped of output) {
+                yield await mapped;
               }
             } finally {
-              pendings.length = 0;
               abort();
-              resolve = undefined;
+              return;
             }
           });
         }
@@ -99,26 +92,20 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
         if (execution === "parallel-ordered") {
           return new Stream<MAPPED>(async function* () {
             const { execute } = WorkerPool.register(mapper, args);
-            const pendings: Promise<MAPPED>[] = [];
-            let resolve: Function | undefined;
+
+            const output = new Stream<Promise<MAPPED>>();
 
             const abort = stream.listen((value) => {
-              pendings.push(execute(value));
-              resolve?.();
+              output.push(execute(value));
             });
 
             try {
-              while (true) {
-                if (pendings.length) {
-                  yield await pendings.shift()!;
-                } else {
-                  await new Promise((r) => (resolve = r));
-                }
+              for await (const mapped of output) {
+                yield await mapped;
               }
             } finally {
-              pendings.length = 0;
               abort();
-              resolve = undefined;
+              return;
             }
           });
         }
@@ -140,63 +127,49 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
 
       function sequential() {
         return new Stream<MAPPED>(async function* () {
-          for await (const value of stream) {
-            yield await mapper(value, args!);
+          try {
+            for await (const value of stream) {
+              yield await mapper(value, args!);
+            }
+          } finally {
+            return;
           }
         });
       }
       function concurrent() {
         return new Stream<MAPPED>(async function* () {
-          let pendings = new Array<MAPPED>();
-          let resolve: Function | undefined;
-
+          const output = new Stream<MAPPED>();
           const abort = stream.listen(async (value) => {
-            pendings.push(await mapper(value, args!));
-            resolve?.();
+            output.push(await mapper(value, args!));
           });
 
           try {
-            while (true) {
-              if (pendings.length) {
-                yield pendings.shift()!;
-              } else {
-                await new Promise<void>((r) => (resolve = r));
-              }
+            for await (const mapped of output) {
+              yield mapped;
             }
           } finally {
-            pendings.length = 0;
             abort();
-            resolve?.();
-            resolve = undefined;
+            return;
           }
         });
       }
       function concurrentOrdered() {
-        const output = new Stream<MAPPED>(async function* () {
-          const pendings: (MAPPED | Promise<MAPPED>)[] = [];
-          let resolve: Function | undefined;
+        return new Stream<MAPPED>(async function* () {
+          const output = new Stream<MAPPED | Promise<MAPPED>>();
 
           let abort = stream.listen((value) => {
-            pendings.push(mapper(value, args!));
-            resolve?.();
+            output.push(mapper(value, args!));
           });
 
           try {
-            while (true) {
-              if (pendings.length) {
-                yield await pendings.shift()!;
-              } else {
-                await new Promise((r) => (resolve = r));
-              }
+            for await (const mapped of output) {
+              yield await mapped;
             }
           } finally {
-            pendings.length = 0;
             abort();
-            resolve?.();
-            resolve = undefined;
+            return;
           }
         });
-        return output;
       }
     }
 

@@ -42,10 +42,15 @@ export type State<T> = Stream<T> & {
 export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, State<T>> {
   return (source: Stream<T>): State<T> => {
     let current = initialValue;
+
     const output = new Stream<T>(async function* () {
-      for await (const value of source) {
-        current = value;
-        yield value;
+      try {
+        for await (const value of source) {
+          current = value;
+          yield value;
+        }
+      } finally {
+        return;
       }
     });
 

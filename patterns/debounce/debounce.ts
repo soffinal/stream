@@ -9,16 +9,23 @@ import { Stream } from "../../src/stream";
  * ```
  */
 export const debounce =
-  <T>(ms: number) =>
+  <T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> =>
   (source: Stream<T>) => {
-    const output = new Stream<T>(async function* () {
+    return new Stream<T>(async function* () {
       let timer: any = null;
 
-      for await (const value of source) {
+      const output = new Stream<T>();
+      const abort = source.listen((value) => {
         clearTimeout(timer);
         timer = setTimeout(() => output.push(value), ms);
+      });
+
+      try {
+        for await (const value of output) {
+          yield value;
+        }
+      } finally {
+        abort();
       }
     });
-
-    return output;
   };

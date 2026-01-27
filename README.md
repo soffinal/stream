@@ -6,11 +6,11 @@
 
 > **Multi-paradigm reactive primitives for modern applications**
 
-Stream provides composable primitives that unify multiple programming paradigms - functional reactive, event-driven, dataflow, and data-driven - with native support for parallel (Web Workers) and distributed (network) execution.
+Stream provides composable primitives that unify multiple programming paradigms - functional reactive, event-driven, dataflow, data-driven, and object-oriented - with native support for parallel (Web Workers) and distributed (network) execution.
 
 **What makes it unique:**
 
-- **Multi-paradigm**: Combine FRP, event-driven, dataflow, and data-driven in one pipeline
+- **Multi-paradigm**: Combine FRP, event-driven, dataflow, data-driven, and OOP in one pipeline
 - **Execution agnostic**: Same code runs locally, in workers, or across network
 - **Minimal core**: 1 primitive (Stream), infinite patterns
 - **Type-safe**: Full TypeScript inference across entire pipeline
@@ -61,6 +61,8 @@ Stream explores a new approach to reactive programming: **multi-paradigm composi
 - **Type safety**: Let TypeScript enforce contracts, fail at compile time
 - **User responsibility**: Explicit over implicit, no magic
 
+> "The primitive is powerful enough to implement itself."
+
 **What we don't do:**
 
 - Replace existing tools - we offer an alternative approach
@@ -90,11 +92,15 @@ stream.listen((n) => console.log(n));
 stream.push(1, 2, 3);
 
 // Pull: Generate values from async source
+// Generator executes lazily when first listener is added
+// Automatically stops when all listeners are removed
 const countdown = new Stream(async function* () {
+  console.log("Started"); // Only logs when first listener added
   for (let i = 5; i > 0; i--) {
     yield i;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  console.log("Stopped"); // Logs when done or all listeners removed
 });
 
 // Both: Push to a pull-based stream
@@ -148,6 +154,27 @@ for await (const value of stream) {
   console.log(value);
   if (done) break;
 }
+```
+
+### 5. Extend Stream (OOP)
+
+```typescript
+class MetricsStream extends Stream<Metric> {
+  private count = 0;
+
+  emit(metric: Metric) {
+    this.count++;
+    this.push({ ...metric, id: this.count });
+  }
+
+  getCount() {
+    return this.count;
+  }
+}
+
+const metrics = new MetricsStream();
+metrics.listen((m) => console.log(m));
+metrics.emit({ value: 100 }); // { value: 100, id: 1 }
 ```
 
 ## Transformers
@@ -230,15 +257,23 @@ stream.pipe(map((x) => x * 2));
 // Concurrent - all at once, main thread, unordered
 stream.pipe(map(async (x) => await fetch(x), { execution: "concurrent" }));
 
-// Concurrent-ordered - all at once, main thread, maintains order
+// Concurrent-ordered - all execute concurrently, emit in order
+// Events don't wait - all computations start immediately
+// Results are buffered if necessary and emitted in original order
+// When computations have equal or incremental execution time, performance equals concurrent
 stream.pipe(map(async (x) => await fetch(x), { execution: "concurrent-ordered" }));
 
 // Parallel - Web Workers, unordered (fastest for CPU-intensive)
 stream.pipe(map((x) => heavyComputation(x), { execution: "parallel" }));
 
-// Parallel-ordered - Web Workers, maintains order
+// Parallel-ordered - all execute in parallel, emit in order
+// Events don't wait - all computations start immediately in workers
+// Results are buffered if necessary and emitted in original order
+// When computations have equal or incremental execution time, performance equals parallel
 stream.pipe(map((x) => heavyComputation(x), { execution: "parallel-ordered" }));
 ```
+
+**Performance insight**: Ordered strategies (`concurrent-ordered`, `parallel-ordered`) only buffer when newer events finish before older ones. When execution times are equal or incremental (each takes same or slightly more time), results naturally arrive in order with zero buffering overhead - matching unordered performance.
 
 **With args (for parallel strategies):**
 
@@ -251,7 +286,17 @@ stream.pipe(
 );
 ```
 
-**Worker Pool**: Parallel strategies use a shared pool of 4 Web Workers. Functions are registered once (not serialized per event) for optimal performance.
+**Worker Pool**: Parallel strategies use a shared pool of Web Workers. Functions are registered once (not serialized per event) for optimal performance.
+
+**Configuration**: Customize worker pool size based on your hardware:
+
+```typescript
+// Configure before using parallel execution
+Stream.configure({ workerPoolSize: 8 }); // Default: 4
+
+// Now parallel execution uses 8 workers
+stream.pipe(map((x) => heavyComputation(x), { execution: "parallel" }));
+```
 
 ### merge - Combine Streams
 
@@ -360,7 +405,7 @@ analytics.listen(sendToAnalytics);
 
 **[📖 Full Documentation →](src/transformers/branch/branch.md)**
 
-### cache - HOT Caching (HOT)
+### cache (HOT)
 
 ```typescript
 // Inspect stream history
@@ -422,16 +467,6 @@ filtered.push(-999); // Logs: -999 (bypasses filter!)
 
 **Use cases**: Emergency notifications, pre-computed values, critical system messages.
 
-### Visual Schema
-
-```
-source → [gate] → gated → [filter] → filtered → [map] → mapped
-  ↓                 ↓                   ↓                  ↓
-push(1)         push(2)             push(3)           push(4)
-  |                 |                   |                  |
-  └─→ all          └─→ skip gate       └─→ skip 2        └─→ skip all
-```
-
 This gives you **surgical control** over which transformations apply to each value.
 
 ## Write Your Own
@@ -441,7 +476,11 @@ A transformer is just a function:
 ```typescript
 const double = (stream: Stream<number>) =>
   new Stream(async function* () {
-    for await (const n of stream) yield n * 2;
+    try {
+      for await (const n of stream) yield n * 2;
+    } finally {
+      return;
+    }
   });
 
 stream.pipe(double);
@@ -476,6 +515,71 @@ const throttle = <T>(ms: number) =>
 ```
 
 **[📖 See all patterns →](patterns/README.md)**
+
+## Self-Referential Pattern
+
+Streams can use themselves as building blocks - a profound meta-pattern that eliminates coordination complexity:
+
+```typescript
+// Concurrent-ordered execution (from map transformer)
+const concurrentOrdered = <T, U>(mapper: (value: T) => Promise<U>) => {
+  return (source: Stream<T>) => {
+    return new Stream<U>(async function* () {
+      const output = new Stream<Promise<U>>(); // Stream creates Stream
+
+      const abort = source.listen((value) => {
+        output.push(mapper(value)); // Push promises immediately
+      });
+
+      try {
+        for await (const mapped of output) {
+          yield await mapped; // Await in order
+        }
+      } finally {
+        abort(); // Automatic cleanup
+      }
+    });
+  };
+};
+```
+
+**Why this is genius:**
+
+- **Eliminates coordination**: No manual tracking of pending promises, resolve functions, or state
+- **Maintains order**: Async iteration naturally awaits promises sequentially
+- **Automatic cleanup**: Generator lifecycle manages listener lifecycle
+- **Minimal**: 11 lines vs 20+ with manual coordination
+- **Self-documenting**: Code reads exactly like what it does
+
+**Compare to manual approach:**
+
+```typescript
+// Manual coordination (20+ lines)
+const pendings: Promise<U>[] = [];
+let resolve: Function | undefined;
+source.listen((value) => {
+  pendings.push(mapper(value));
+  resolve?.();
+});
+while (true) {
+  if (pendings.length) yield await pendings.shift()!;
+  else await new Promise((r) => (resolve = r));
+}
+
+// Self-referential pattern (11 lines)
+const output = new Stream<Promise<U>>();
+source.listen((value) => output.push(mapper(value)));
+for await (const mapped of output) yield await mapped;
+```
+
+**When to use this pattern:**
+
+- Event-driven logic (can't yield from callbacks)
+- Need guaranteed cleanup (timers, listeners, resources)
+- Async coordination (debounce, throttle, ordered execution)
+- Eliminate manual state tracking
+
+The primitive is powerful enough to implement itself. This is the elegance of minimal abstractions.
 
 ## Dynamic Configuration Pattern
 
@@ -693,6 +797,10 @@ new Stream<T>(sourceStream: Stream<T>)
 ```
 
 Creates a new stream. Optionally accepts an async generator function or another stream as source.
+
+**Lazy execution**: Generator functions execute only when the first listener is added.
+
+**Automatic cleanup**: Generator stops and cleans up when all listeners are removed.
 
 #### Methods
 

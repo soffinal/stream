@@ -148,9 +148,10 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * ```
    */
   constructor();
-  constructor(stream: Stream.FunctionGenerator<VALUE> | Stream<VALUE>);
-  constructor(stream?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
-    this._generatorFn = stream instanceof Stream ? () => stream[Symbol.asyncIterator]() : stream;
+  constructor(stream: Stream<VALUE>);
+  constructor(fn: Stream.FunctionGenerator<VALUE>);
+  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
+    this._generatorFn = streamOrFn instanceof Stream ? () => streamOrFn[Symbol.asyncIterator]() : streamOrFn;
   }
 
   /**
@@ -479,6 +480,44 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     this._listeners.clear();
     this._listenerAdded?.clear();
     this._listenerRemoved?.clear();
+    this._listenerAdded = undefined;
+    this._listenerRemoved = undefined;
+  }
+  protected static _config: Stream.Config = {
+    workerPoolSize: 4,
+  };
+
+  /**
+   * Configure global Stream settings.
+   *
+   * @param config - Configuration options
+   *
+   * @example
+   * ```typescript
+   * // Configure worker pool size based on your hardware
+   * Stream.configure({ workerPoolSize: 8 });
+   *
+   * // Now parallel execution uses 8 workers
+   * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }));
+   * ```
+   */
+  static configure(config: Partial<Stream.Config>): void {
+    Stream._config = { ...Stream._config, ...config };
+  }
+
+  /**
+   * Get current configuration.
+   *
+   * @returns Current configuration object
+   *
+   * @example
+   * ```typescript
+   * const config = Stream.getConfig();
+   * console.log(config.workerPoolSize); // 4 (default)
+   * ```
+   */
+  static getConfig(): Readonly<Stream.Config> {
+    return { ...Stream._config };
   }
 }
 
@@ -487,4 +526,22 @@ export namespace Stream {
   export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
   export type Abort = (() => void) & Disposable;
   export type Transformer<T extends Stream<any>, U extends Stream<any>> = (stream: T) => U;
+
+  export interface Config {
+    /**
+     * Number of Web Workers in the pool for parallel execution.
+     * Configure based on your hardware capabilities.
+     *
+     * @default 4
+     * @example
+     * ```typescript
+     * // High-end hardware
+     * Stream.configure({ workerPoolSize: 16 });
+     *
+     * // Restricted hardware (IoT, embedded)
+     * Stream.configure({ workerPoolSize: 2 });
+     * ```
+     */
+    workerPoolSize: number;
+  }
 }

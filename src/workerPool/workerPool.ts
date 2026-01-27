@@ -3,6 +3,8 @@
  * Reuses workers across multiple streams
  */
 
+import { Stream } from "../stream.ts";
+
 type Task<T, U> = {
   id: string;
   fn: string;
@@ -16,7 +18,6 @@ class WorkerPoolManager {
   private static instance: WorkerPoolManager;
   private workers: Worker[] = [];
   private pendingTasks = new Map<string, Task<any, any>>();
-  private maxWorkers = 4; // Configurable
   private taskCounter = 0;
   private fnCounter = 0;
 
@@ -80,7 +81,8 @@ class WorkerPoolManager {
   }
 
   private getWorker(): Worker {
-    if (this.workers.length < this.maxWorkers) {
+    const config = Stream.getConfig();
+    if (this.workers.length < config.workerPoolSize) {
       const worker = this.createWorker();
       this.workers.push(worker);
       return worker;

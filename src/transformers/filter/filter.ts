@@ -48,9 +48,13 @@ export const filter: filter.Filter = <
         );
     // Filter based on boolean
     return new Stream<FILTERED>(async function* () {
-      for await (const [value, shouldPass] of mapped) {
-        if (shouldPass === undefined) break;
-        if (shouldPass) yield value as FILTERED;
+      try {
+        for await (const [value, shouldPass] of mapped) {
+          if (shouldPass === undefined) break;
+          if (shouldPass) yield value as FILTERED;
+        }
+      } finally {
+        return;
       }
     });
   };
