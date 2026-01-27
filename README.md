@@ -177,6 +177,95 @@ metrics.listen((m) => console.log(m));
 metrics.emit({ value: 100 }); // { value: 100, id: 1 }
 ```
 
+## All Values Are Valid
+
+**Stream treats `undefined` and `null` as valid data** :
+
+```typescript
+const stream = new Stream<string | undefined | null>();
+
+stream.listen((value) => console.log("Received:", value));
+
+stream.push(undefined); // ✅ Emits undefined
+stream.push(null); // ✅ Emits null
+stream.push("hello"); // ✅ Emits 'hello'
+stream.push(0); // ✅ Emits 0
+stream.push(false); // ✅ Emits false
+stream.push(""); // ✅ Emits empty string
+```
+
+**Why this matters:**
+
+```typescript
+// API responses with optional fields
+const user = new Stream<User | undefined>();
+user.push(undefined); // "User not found" is valid data
+
+// Nullable database fields
+const age = new Stream<number | null>();
+age.push(null); // "Age unknown" is valid data
+
+// Clearing state
+const selected = new Stream<Item | null>();
+selected.push(null); // "Deselect" is a valid action
+
+// Optional configuration
+const config = new Stream<Config | undefined>();
+config.push(undefined); // "Use defaults" is a valid signal
+```
+
+**Implementation detail**: Stream never checks `if (value)` - it treats all values equally. Values are opaque data, never control flow signals.
+
+## Universal AsyncIterable Adapter
+
+Stream implements `AsyncIterable<T>`, making it a **universal adapter** for any async data source in JavaScript:
+
+```typescript
+// WebSocket → Stream
+const ws = new WebSocket("ws://localhost");
+const wsStream = new Stream(async function* () {
+  while (ws.readyState === WebSocket.OPEN) {
+    yield await new Promise((r) => (ws.onmessage = (e) => r(e.data)));
+  }
+});
+
+// Server-Sent Events → Stream
+const sse = new EventSource("/events");
+const sseStream = new Stream(async function* () {
+  while (true) {
+    yield await new Promise((r) => (sse.onmessage = (e) => r(e.data)));
+  }
+});
+
+// ReadableStream → Stream
+const response = await fetch("/api/data");
+const fetchStream = new Stream(async function* () {
+  const reader = response.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    yield value;
+  }
+});
+
+// Merge ANY AsyncIterable
+const unified = wsStream
+  .pipe(merge(sseStream))
+  .pipe(merge(fetchStream))
+  .pipe(filter((x) => x.length > 0))
+  .pipe(map((x) => JSON.parse(x)));
+
+unified.listen((data) => console.log(data));
+```
+
+**Works with:**
+
+- WebSocket, EventSource, WebRTC
+- fetch() ReadableStream
+- Node.js Readable streams
+- Async generators
+- Any object with `[Symbol.asyncIterator]()`
+
 ## Transformers
 
 ### state - Reactive State

@@ -40,24 +40,27 @@ export function cache<T>(options?: CacheOptions<T>): Stream.Transformer<Stream<T
     const startCleanup = () => {
       if (ttl === undefined || cleanupTimer !== undefined) return;
 
-      cleanupTimer = setInterval(() => {
-        const now = Date.now();
-        let i = 0;
-        while (i < cacheArray.length) {
-          if (now - cacheArray[i].timestamp >= ttl) {
-            const [entry] = cacheArray.splice(i, 1);
-            evicted.push({ value: entry.value, reason: "ttl" });
-          } else {
-            i++;
+      cleanupTimer = setInterval(
+        () => {
+          const now = Date.now();
+          let i = 0;
+          while (i < cacheArray.length) {
+            if (now - cacheArray[i].timestamp >= ttl) {
+              const [entry] = cacheArray.splice(i, 1);
+              evicted.push({ value: entry.value, reason: "ttl" });
+            } else {
+              i++;
+            }
           }
-        }
 
-        // Stop timer if cache is empty
-        if (cacheArray.length === 0 && cleanupTimer !== undefined) {
-          clearInterval(cleanupTimer);
-          cleanupTimer = undefined;
-        }
-      }, Math.min(ttl / 4, 500)); // Check at quarter TTL or max 500ms
+          // Stop timer if cache is empty
+          if (cacheArray.length === 0 && cleanupTimer !== undefined) {
+            clearInterval(cleanupTimer);
+            cleanupTimer = undefined;
+          }
+        },
+        Math.min(ttl / 4, 500),
+      ); // Check at quarter TTL or max 500ms
     };
 
     const stopCleanup = () => {

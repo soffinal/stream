@@ -223,7 +223,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     try {
       while (true) {
         if (queue.length) yield queue.shift()!;
-        else await new Promise<void>((resolve) => (resolver = resolve));
+        else await new Promise<void>((r) => (resolver = r));
       }
     } finally {
       abort();

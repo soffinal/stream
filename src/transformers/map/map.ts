@@ -80,7 +80,7 @@ export const map: map.Map = <VALUE, STATE extends Record<string, unknown>, MAPPE
 
             try {
               for await (const mapped of output) {
-                yield await mapped;
+                yield mapped;
               }
             } finally {
               abort();

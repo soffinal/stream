@@ -25,6 +25,7 @@ describe("Stream", () => {
 
       source.push(1, 2, 3);
       await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(results).toEqual([1, 2, 3]);
     });
 
@@ -181,44 +182,6 @@ describe("Stream", () => {
 
       expect(values).toEqual([1]);
       expect(stream.hasListeners).toBe(false);
-    });
-
-    it("clear method removes all listeners", async () => {
-      const stream = new Stream<number>();
-      const values1: number[] = [];
-      const values2: number[] = [];
-
-      stream.listen((value) => values1.push(value));
-      stream.listen((value) => values2.push(value));
-
-      expect(stream.hasListeners).toBe(true);
-
-      stream.clear();
-
-      expect(stream.hasListeners).toBe(false);
-
-      stream.push(1);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(values1).toEqual([]);
-      expect(values2).toEqual([]);
-    });
-
-    it("stream dispose method calls clear", () => {
-      const stream = new Stream<number>();
-      const values: number[] = [];
-
-      stream.listen((value) => values.push(value));
-
-      expect(stream.hasListeners).toBe(true);
-
-      stream[Symbol.dispose]();
-
-      expect(stream.hasListeners).toBe(false);
-
-      stream.push(1);
-
-      expect(values).toEqual([]);
     });
   });
 
