@@ -518,6 +518,21 @@ const cached = stream.pipe(
 
 **[📖 Full Documentation →](src/transformers/cache/cache.md)**
 
+### microbatch - Push Before Listen
+
+```typescript
+const source = new Stream<number>();
+const batched = source.pipe(microbatch());
+
+// Push before listener exists
+source.push(1, 2, 3);
+
+// Listener receives all values
+batched.listen(v => console.log(v)); // 1, 2, 3
+```
+
+**[📖 Full Documentation →](src/transformers/microbatch/microbatch.md)**
+
 ## Stream Chain Contract
 
 Each stream in a pipeline is both a **transformer output** and an **injection point**:
@@ -669,6 +684,79 @@ for await (const mapped of output) yield await mapped;
 - Eliminate manual state tracking
 
 The primitive is powerful enough to implement itself. This is the elegance of minimal abstractions.
+
+## Emergent Complexity
+
+**Complex problems become simple with the right transformer.** This is not about having many features - it's about composing minimal primitives in powerful ways.
+
+### Rate Limiting Without Throttling
+
+```typescript
+const requests = new Stream<Request>();
+const q = requests.pipe(queue({ size: 500 }));
+
+// Fast producer (unlimited rate)
+for (let i = 0; i < 10000; i++) {
+  requests.push({ id: i });
+}
+
+// Slow consumer (naturally rate limited)
+for await (const req of q) {
+  await processRequest(req); // Takes 100ms
+  // Automatically processes 10 req/sec - no throttle needed!
+}
+```
+
+**What happened?** Rate limiting emerged from composition:
+- `queue` decouples producer/consumer speeds
+- Consumer processes at its natural pace
+- Queue absorbs bursts (bounded buffer)
+- No explicit throttling logic needed
+
+### Backpressure Without Coordination
+
+```typescript
+const stream = new Stream<Data>();
+const q = stream.pipe(queue({ size: 100 }));
+
+// Monitor backpressure (just read queue size)
+setInterval(() => {
+  const size = q.cache.values.length;
+  if (size > 80) console.warn('Slow consumer detected!');
+}, 1000);
+```
+
+**What happened?** Backpressure monitoring emerged from observability:
+- Queue exposes its state (`cache.values`)
+- No manual tracking of pending operations
+- No coordination between producer/consumer
+- Just observe the queue
+
+### Parallel Execution Without Workers
+
+```typescript
+stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }));
+```
+
+**What happened?** Parallelism emerged from execution strategy:
+- Same `map` transformer
+- Different execution context (workers)
+- No manual worker management
+- No message passing code
+
+### The Pattern
+
+**Complex behavior emerges from simple composition:**
+
+1. **Choose the right primitive** (queue, cache, map, filter)
+2. **Compose naturally** (pipe transformers together)
+3. **Complex problems solve themselves** (rate limiting, backpressure, parallelism)
+
+**This is the power of minimal abstractions.** You're not fighting the framework - you're discovering patterns that already exist in the composition.
+
+> "Complexity is not in the features. Complexity emerges from composition."
+
+**The library doesn't solve problems for you - it provides primitives that make problems disappear.**
 
 ## Dynamic Configuration Pattern
 

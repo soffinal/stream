@@ -1,39 +1,16 @@
 import { Stream } from "../../stream";
 
-export type Cache<T> = Stream<T> & {
-  cache: {
-    readonly values: T[];
-    readonly size: number | undefined;
-    readonly dropStrategy: "oldest" | "newest";
-    readonly ttl: number | undefined;
-    readonly evicted: Stream<{ value: T; reason: "maxSize" | "ttl" }>;
-    clear(): void;
-  };
-};
-
-export type CacheOptions<T> = {
-  initialValues?: T[];
-  maxSize?: number;
-  dropStrategy?: "oldest" | "newest";
-  ttl?: number;
-};
-
-type CacheEntry<T> = {
-  value: T;
-  timestamp: number;
-};
-
-export function cache<T>(options?: CacheOptions<T>): Stream.Transformer<Stream<T>, Cache<T>> {
-  const { initialValues = [], maxSize, dropStrategy = "oldest", ttl } = options ?? {};
+export function cache<T>(options?: cache.Options<T>): Stream.Transformer<Stream<T>, cache.Cache<T>> {
+  const { initialValues = [], size, dropStrategy = "oldest", ttl } = options ?? {};
 
   const cacheArray: CacheEntry<T>[] = initialValues.map((value) => ({
     value,
     timestamp: Date.now(),
   }));
 
-  return (source: Stream<T>): Cache<T> => {
+  return (source: Stream<T>): cache.Cache<T> => {
     const output = new Stream<T>();
-    const evicted = new Stream<{ value: T; reason: "maxSize" | "ttl" }>();
+    const evicted = new Stream<{ value: T; reason: "size" | "ttl" }>();
 
     let cleanupTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -85,9 +62,9 @@ export function cache<T>(options?: CacheOptions<T>): Stream.Transformer<Stream<T
       cacheArray.push(entry);
       startCleanup();
 
-      if (maxSize !== undefined && cacheArray.length > maxSize) {
+      if (size !== undefined && cacheArray.length > size) {
         const entry = dropStrategy === "oldest" ? cacheArray.shift() : cacheArray.pop();
-        if (entry) evicted.push({ value: entry.value, reason: "maxSize" });
+        if (entry) evicted.push({ value: entry.value, reason: "size" });
       }
 
       output.push(value);
@@ -99,7 +76,7 @@ export function cache<T>(options?: CacheOptions<T>): Stream.Transformer<Stream<T
           return cacheArray.map((entry) => entry.value);
         },
         get size() {
-          return maxSize;
+          return size;
         },
         get dropStrategy() {
           return dropStrategy;
@@ -119,6 +96,30 @@ export function cache<T>(options?: CacheOptions<T>): Stream.Transformer<Stream<T
       configurable: false,
     });
 
-    return output as Cache<T>;
+    return output as cache.Cache<T>;
   };
 }
+
+export namespace cache {
+  export type Cache<T> = Stream<T> & {
+    cache: {
+      readonly values: T[];
+      readonly size: number | undefined;
+      readonly dropStrategy: "oldest" | "newest";
+      readonly ttl: number | undefined;
+      readonly evicted: Stream<{ value: T; reason: "size" | "ttl" }>;
+      clear(): void;
+    };
+  };
+
+  export type Options<T> = {
+    initialValues?: T[];
+    size?: number;
+    dropStrategy?: "oldest" | "newest";
+    ttl?: number;
+  };
+}
+type CacheEntry<T> = {
+  value: T;
+  timestamp: number;
+};
