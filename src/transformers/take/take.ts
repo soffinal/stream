@@ -1,4 +1,8 @@
+import { Stream } from "../../stream";
 import { filter } from "../filter/filter";
+import { sequential } from "../sequential";
+import { statefull } from "../statefull";
+import { takeWhile } from "../take-while";
 
 /**
  * Take first N values
@@ -8,8 +12,7 @@ import { filter } from "../filter/filter";
  * stream.pipe(take(5))
  * ```
  */
-export const take = <T>(n: number) =>
-  filter<T, { count: number }>({ count: 0 }, (state, value) => {
-    if (state.count >= n) return;
-    return [true, { count: state.count + 1 }];
-  });
+export const take =
+  <T>(n: number): Stream.Transformer<Stream<T>, Stream<T>> =>
+  (stream) =>
+    stream.pipe(takeWhile((_, index) => index < n));

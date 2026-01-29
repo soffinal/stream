@@ -1,6 +1,6 @@
 import { Stream } from "../../stream";
 import { WorkerPool } from "../../workerPool/workerPool";
-import { concurrent } from "../concurrent";
+import { concurrent } from "../concurrent/concurrent";
 
 export function parallel<VALUE, MAPPED, ARGS extends any[]>(
   mapper: parallel.Mapper<VALUE, MAPPED, ARGS>,

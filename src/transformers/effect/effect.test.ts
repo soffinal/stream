@@ -1,6 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { Stream } from "../../stream";
 import { effect } from "./effect";
+import { statefull } from "../statefull";
+import { sequential } from "../sequential";
 
 describe("effect", () => {
   it("should execute side effects without transforming values", async () => {
@@ -22,12 +24,18 @@ describe("effect", () => {
     const stream = new Stream<number>();
     const logs: string[] = [];
 
-    const result = stream.pipe(
-      effect({ count: 0 }, (state, value) => {
-        logs.push(`[${state.count}] ${value}`);
-        return { count: state.count + 1 };
-      }),
-    );
+    const result = stream
+      .pipe(
+        statefull({ count: 0 }, (state, value) => {
+          return [[value, state], { count: state.count + 1 }] as const;
+        }),
+      )
+      .pipe(
+        effect(([value, state]) => {
+          logs.push(`[${state.count}] ${value}`);
+        }),
+      )
+      .pipe(sequential(([value]) => value));
 
     const values: number[] = [];
     result.listen((value) => values.push(value));

@@ -17,8 +17,8 @@ import { statefull } from "../statefull/statefull";
  */
 export const distinct =
   <T>(): Stream.Transformer<Stream<T>, Stream<T>> =>
-  (source) => {
-    return source
+  (source) =>
+    source
       .pipe(
         statefull({ seen: new Set() }, (state, value) => {
           if (state.seen.has(value)) return [[value, false as boolean], state] as const;
@@ -26,8 +26,7 @@ export const distinct =
           return [[value, true as boolean], state] as const;
         }),
       )
-      .pipe(filter((v) => v[1]))
-      .pipe(sequential((v) => v[0]));
-  };
+      .pipe(filter((t) => t[1]))
+      .pipe(sequential((t) => t[0]));
 
 const s = new Stream<number>().pipe(distinct());

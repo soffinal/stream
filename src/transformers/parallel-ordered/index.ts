@@ -1,6 +1,6 @@
 import { Stream } from "../../stream";
 import { WorkerPool } from "../../workerPool/workerPool";
-import { concurrentOrdered } from "../concurrent-ordered";
+import { concurrentOrdered } from "../concurrent-ordered/concurrent-ordered";
 
 export function parallelOrdered<VALUE, MAPPED, ARGS extends any[]>(
   mapper: parallelOrdered.Mapper<VALUE, MAPPED, ARGS>,
