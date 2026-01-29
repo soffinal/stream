@@ -1,6 +1,7 @@
 import { Stream } from "../../stream";
 import { cache } from "../cache";
-import { zip } from "../zip";
+import { zip } from "../zip/zip";
+import { merge } from "../merge";
 
 /**
  * Sync latest from multiple streams
@@ -11,6 +12,6 @@ import { zip } from "../zip";
  * ```
  */
 export const combineLatest =
-  <T, U>(other: Stream<U>) =>
+  <T, STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS) =>
   (source: Stream<T>) =>
-    source.pipe(cache({ size: 1 })).pipe(zip(other.pipe(cache({ size: 1 }))));
+    source.pipe(cache({ size: 1 })).pipe(zip(...streams.map((s) => s.pipe(cache({ size: 1 })))));

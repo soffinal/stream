@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { Stream } from "../../src/stream";
-import { distinctUntilChanged } from "./distinctUntilChanged";
+import { Stream } from "../../stream";
+import { distinctUntilChanged } from "./distinct-until-changed";
 
 describe("distinctUntilChanged pattern", () => {
   it("should remove consecutive duplicates", async () => {

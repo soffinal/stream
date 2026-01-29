@@ -5,24 +5,17 @@ export function merge<VALUE, STREAMS extends [Stream<any>, ...Stream<any>[]]>(
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE | Stream.ValueOf<STREAMS[number]>>> {
   return (stream: Stream<VALUE>): Stream<VALUE | Stream.ValueOf<STREAMS[number]>> =>
     new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>(async function* () {
-      const allStreams = [stream, ...streams];
-      const queue: (VALUE | Stream.ValueOf<STREAMS[number]>)[] = [];
-      let resolver: Function | undefined;
+      const output = new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>();
 
-      const cleanups = allStreams.map((s) =>
+      const cleanups = [stream, ...streams].map((s) =>
         s.listen((value) => {
-          queue.push(value);
-          resolver?.();
+          output.push(value);
         }),
       );
 
       try {
-        while (true) {
-          if (queue.length) {
-            yield queue.shift()!;
-          } else {
-            await new Promise((resolve) => (resolver = resolve));
-          }
+        for await (const value of output) {
+          yield value;
         }
       } finally {
         cleanups.forEach((cleanup) => cleanup());

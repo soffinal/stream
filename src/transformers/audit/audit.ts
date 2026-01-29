@@ -15,22 +15,16 @@ export const audit =
       let timer: any = null;
       let canEmit = true;
 
-      const output = new Stream<T>();
-
-      const abort = source.listen((value) => {
-        if (canEmit) {
-          output.push(value);
-          canEmit = false;
-          clearTimeout(timer);
-          timer = setTimeout(() => (canEmit = true), ms);
-        }
-      });
       try {
-        for await (const value of output) {
-          yield value;
+        for await (const value of source) {
+          if (canEmit) {
+            yield value;
+            canEmit = false;
+            clearTimeout(timer);
+            timer = setTimeout(() => (canEmit = true), ms);
+          }
         }
       } finally {
-        abort();
         clearTimeout(timer);
       }
     });

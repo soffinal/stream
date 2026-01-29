@@ -1,4 +1,4 @@
-import { filter } from "../filter/filter";
+import { filter } from "../filter";
 
 /**
  * Remove consecutive duplicate values (O(1) memory)
