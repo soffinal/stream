@@ -418,6 +418,11 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       });
     }).then(onfulfilled);
   }
+  async next(listener?: (value: VALUE) => any): Promise<VALUE> {
+    const value = await this.then();
+    listener?.(value);
+    return value;
+  }
 
   /**
    * Applies a transformer function to this stream, enabling functional composition.

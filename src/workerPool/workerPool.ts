@@ -91,7 +91,7 @@ class WorkerPoolManager {
     return this.workers[this.taskCounter % this.workers.length];
   }
 
-  register<T, U>(fn: (value: T, args?: any) => U | Promise<U>, args?: any) {
+  register<T, U>(fn: (value: T, ...args: any) => U | Promise<U>, args?: any) {
     const fnId = `fn-${this.fnCounter++}`;
     const fnString = fn.toString();
 
