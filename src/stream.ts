@@ -484,8 +484,23 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * const stateResult = numbers.pipe(toState(0));
    * ```
    */
-  pipe<OUTPUT extends Stream<any>>(transformer: Stream.Transformer<typeof this, OUTPUT>): OUTPUT {
-    return transformer(this);
+  // pipe<OUTPUT extends Stream<any>>(transformer: Stream.Transformer<typeof this, OUTPUT>): OUTPUT {
+  //   return transformer(this);
+  // }
+  pipe<OUTPUT extends Stream<any>>(
+    transformer: Stream.Transformer<this, OUTPUT>,
+  ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this, keyof Stream<any>> & Omit<OUTPUT, keyof Stream<any>>> {
+    const output = transformer(this);
+
+    // Runtime: Copy all properties from this to output
+    for (const key in this) {
+      if (this.hasOwnProperty(key) && !(key in output)) {
+        (output as any)[key] = this[key];
+      }
+    }
+
+    // Type: Output with capabilities from this
+    return output as never;
   }
   [Symbol.dispose](): void {
     this.clear();
@@ -579,6 +594,24 @@ export namespace Stream {
     }
   }
   /**
+   * Helper to create augmented transformers.
+   * Handles prop merging and type inference automatically.
+   */
+  // export function augment<T, P, NewProps>(
+  //   source: Stream<T, P>,
+  //   generator: Stream.FunctionGenerator<T>,
+  //   propsFactory: (output: Stream<T, P & NewProps>) => NewProps
+  // ): Stream<T, P & NewProps> {
+  //   const output = source.clone(generator);
+  //   const newProps = propsFactory(output as Stream<T, P & NewProps>);
+
+  //   for (const [key, value] of Object.entries(newProps)) {
+  //     output.addAugmentation(key, value);
+  //   }
+
+  //   return output as Stream<T, P & NewProps>;
+  // }
+  /**
    * Extracts the value type from a Stream type.
    *
    * @example
@@ -646,19 +679,6 @@ export namespace Stream {
     output: Stream<VALUE>,
   ) => void;
   /**
-   * Cleanup function returned by listen(), also implements Disposable.
-   *
-   * @example
-   * ```typescript
-   * const abort = stream.listen(console.log);
-   * abort(); // Remove listener
-   *
-   * // Or with using
-   * using abort = stream.listen(console.log);
-   * // Auto-cleanup when scope exits
-   * ```
-   */
-  /**
    * Function that transforms one stream into another.
    *
    * @example
@@ -699,3 +719,5 @@ export namespace Stream {
     autoBind: boolean;
   }
 }
+
+type Prettify<T> = { [k in keyof T]: T[k] } & {};

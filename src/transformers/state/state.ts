@@ -1,4 +1,5 @@
 import { Stream } from "../../stream";
+import { gate, Gate } from "../gate";
 
 /**
  * Stream with reactive state management via getter/setter.
@@ -72,3 +73,8 @@ export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, State<T
     return output as State<T>;
   };
 }
+const stream = new Stream<number>();
+const s = stream.pipe(state(0));
+const s2 = s.pipe(gate());
+
+const s3 = s2;
