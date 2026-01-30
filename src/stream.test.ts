@@ -93,11 +93,11 @@ describe("Stream", () => {
 
       expect(stream.hasListeners).toBe(false);
 
-      const abort = stream.listen(() => {});
+      const ctr = stream.listen(() => {});
 
       expect(stream.hasListeners).toBe(true);
 
-      abort();
+      ctr.abort();
 
       expect(stream.hasListeners).toBe(false);
     });
@@ -108,10 +108,10 @@ describe("Stream", () => {
       const stream = new Stream<number>();
       const values: number[] = [];
 
-      const cleanup = stream.listen((value) => values.push(value));
+      const ctr = stream.listen((value) => values.push(value));
 
       stream.push(1);
-      cleanup();
+      ctr.abort();
       stream.push(2);
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -174,7 +174,6 @@ describe("Stream", () => {
       const cleanup = stream.listen((value) => values.push(value));
 
       expect(typeof cleanup[Symbol.dispose]).toBe("function");
-      expect(cleanup[Symbol.dispose]).toBe(cleanup);
 
       stream.push(1);
       cleanup[Symbol.dispose]();
@@ -419,8 +418,8 @@ describe("Stream", () => {
 
       stream.listenerRemoved.listen(() => leaveEvents.push(7));
 
-      const abort = stream.listen(() => {});
-      abort();
+      const ctr = stream.listen(() => {});
+      ctr.abort();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(leaveEvents).toHaveLength(1);

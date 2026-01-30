@@ -107,8 +107,11 @@
  * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(scan((a, b) => a + b, 0))
  */
 export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
-  protected _listeners: Map<(value: VALUE) => void, WeakRef<object> | undefined> = new Map();
-  protected _generatorFn: Stream.FunctionGenerator<VALUE> | undefined;
+  protected _listeners: Map<
+    (value: VALUE) => void,
+    { weakRef: WeakRef<object>; controller: Stream.Controller } | undefined
+  > = new Map();
+  protected _functionGenerator: Stream.FunctionGenerator<VALUE> | Stream.FunctionSource<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
   protected _listenerRemoved: Stream<void> | undefined;
@@ -150,10 +153,19 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   constructor();
   constructor(stream: Stream<VALUE>);
   constructor(fn: Stream.FunctionGenerator<VALUE>);
-  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
-    this._generatorFn = streamOrFn instanceof Stream ? () => streamOrFn[Symbol.asyncIterator]() : streamOrFn;
-  }
+  constructor(fn: Stream.FunctionSource<VALUE>);
+  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream.FunctionSource<VALUE> | Stream<VALUE>) {
+    this._functionGenerator = streamOrFn instanceof Stream ? () => streamOrFn[Symbol.asyncIterator]() : streamOrFn;
 
+    if (Stream._config.autoBind) {
+      this.push = this.push.bind(this);
+      this.listen = this.listen.bind(this);
+      this.then = this.then.bind(this);
+      this.pipe = this.pipe.bind(this);
+      this.clear = this.clear.bind(this);
+      this.withContext = this.withContext.bind(this);
+    }
+  }
   /**
    * Returns true if the stream has active listeners.
    *
@@ -174,7 +186,6 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   get hasListeners(): boolean {
     return this._listeners.size > 0;
   }
-
   /**
    * Stream that emits when a listener is added.
    *
@@ -192,7 +203,6 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     if (!this._listenerAdded) this._listenerAdded = new Stream<void>();
     return this._listenerAdded;
   }
-
   /**
    * Stream that emits when a listener is removed.
    *
@@ -215,7 +225,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     const queue: VALUE[] = [];
     let resolver: Function | undefined;
 
-    const abort = this.listen((value) => {
+    const controller = this.listen((value) => {
       queue.push(value);
       resolver?.();
     });
@@ -226,13 +236,12 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
         else await new Promise<void>((r) => (resolver = r));
       }
     } finally {
-      abort();
+      controller.abort();
       queue.length = 0;
       resolver = undefined;
       return;
     }
   }
-
   /**
    * Pushes one or more values to all listeners.
    * Automatically removes listeners whose context objects have been garbage collected.
@@ -256,7 +265,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     const deadListeners = [];
     for (const value of values) {
       for (const [listener, ctx] of this._listeners) {
-        if (ctx && !ctx.deref()) {
+        if (ctx && !ctx.weakRef.deref()) {
+          ctx.controller.abort();
           deadListeners.push(listener);
           continue;
         }
@@ -267,7 +277,6 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       this._listeners.delete(listener);
     }
   }
-
   /**
    * Creates an async iterator bound to a context object's lifetime.
    * Automatically stops iteration when the context is garbage collected.
@@ -302,12 +311,11 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       return;
     }
   }
-
   /**
    * Adds a listener to the stream with optional automatic cleanup.
    *
    * @param listener - Function to call when values are pushed
-   * @param signalOrStreamOrContext - Optional cleanup mechanism:
+   * @param signal - Optional cleanup mechanism:
    *   - AbortSignal: Remove listener when signal is aborted
    *   - Stream: Remove listener when stream emits
    *   - Object: Remove listener when object is garbage collected (WeakRef)
@@ -341,31 +349,56 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * cleanup();
    * ```
    */
-  listen(listener: (value: VALUE) => void): Stream.Abort;
-  listen(listener: (value: VALUE) => void, signal: AbortSignal): Stream.Abort;
-  listen(listener: (value: VALUE) => void, stream: Stream<any>): Stream.Abort;
-  listen(listener: (value: VALUE) => void, context: object): Stream.Abort;
-  listen(listener: (value: VALUE) => void, signalOrStreamOrContext?: AbortSignal | Stream<any> | object): Stream.Abort {
+  listen(listener: (value: VALUE) => void): Stream.Controller;
+  listen(listener: (value: VALUE) => void, signal: AbortSignal): Stream.Controller;
+  listen(listener: (value: VALUE) => void, stream: Stream<any>): Stream.Controller;
+  listen(listener: (value: VALUE) => void, context: object): Stream.Controller;
+  listen(listener: (value: VALUE) => void, signal?: AbortSignal | Stream<any> | object): Stream.Controller {
     const self = this;
-    let signalAbort: Function | undefined;
-    let context: WeakRef<object> | undefined;
+    let abortSignal: Function | undefined;
+    let weakRef: WeakRef<object> | undefined;
 
-    if (signalOrStreamOrContext instanceof AbortSignal) {
-      if (signalOrStreamOrContext?.aborted) return abort;
-      signalOrStreamOrContext?.addEventListener("abort", abort);
-      signalAbort = () => signalOrStreamOrContext?.removeEventListener("abort", abort);
-    } else if (signalOrStreamOrContext instanceof Stream) {
-      signalAbort = signalOrStreamOrContext?.listen(abort);
-    } else if (signalOrStreamOrContext) {
-      context = new WeakRef(signalOrStreamOrContext);
+    const controller = new Stream.Controller(abort);
+
+    if (signal instanceof AbortSignal) {
+      if (signal?.aborted) return controller;
+
+      signal?.addEventListener("abort", controller.abort);
+      abortSignal = () => signal?.removeEventListener("abort", controller.abort);
+    } else if (signal instanceof Stream) {
+      abortSignal = signal?.listen(controller.abort).abort;
+    } else if (signal) {
+      weakRef = new WeakRef(signal);
     }
 
-    self._listeners.set(listener, context);
+    self._listeners.set(listener, weakRef ? { weakRef, controller } : undefined);
 
     self._listenerAdded?.push();
 
-    if (self._generatorFn && self._listeners.size === 1) {
-      self._generator = self._generatorFn();
+    if (self._functionGenerator && self._listeners.size === 1) {
+      if (self._functionGenerator.length === 0) {
+        self._generator = (self._functionGenerator as Stream.FunctionGenerator<VALUE>)() as AsyncGenerator<VALUE>;
+      } else {
+        const output = new Stream<VALUE>();
+        let abort: () => void = () => {};
+        (self._functionGenerator as Stream.FunctionSource<VALUE>)(
+          output.push.bind(output),
+          (fn) => (abort = fn),
+          output,
+        );
+
+        this._generator = (async function* () {
+          try {
+            for await (const value of output) {
+              yield value;
+            }
+          } finally {
+            abort();
+            return;
+          }
+        })();
+      }
+
       (async () => {
         for await (const value of self._generator!) {
           self.push(value);
@@ -373,9 +406,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       })();
     }
 
-    abort[Symbol.dispose] = abort;
-
-    return abort;
+    return controller;
     function abort(): void {
       self._listeners.delete(listener);
       self._listenerRemoved?.push();
@@ -383,12 +414,11 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
         self._generator?.return();
         self._generator = undefined;
       }
-      signalAbort?.();
-      signalAbort = undefined;
-      context = undefined;
+      abortSignal?.();
+      abortSignal = undefined;
+      weakRef = undefined;
     }
   }
-
   /**
    * Promise-like interface that resolves with the next value.
    *
@@ -412,18 +442,12 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    */
   then(onfulfilled?: ((value: VALUE) => VALUE | PromiseLike<VALUE>) | null): Promise<VALUE> {
     return new Promise<VALUE>((resolve) => {
-      const abort = this.listen((value) => {
+      const controller = this.listen((value) => {
         resolve(value);
-        abort();
+        controller.abort();
       });
     }).then(onfulfilled);
   }
-  async next(listener?: (value: VALUE) => any): Promise<VALUE> {
-    const value = await this.then();
-    listener?.(value);
-    return value;
-  }
-
   /**
    * Applies a transformer function to this stream, enabling functional composition.
    *
@@ -490,26 +514,31 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   }
   protected static _config: Stream.Config = {
     workerPoolSize: 4,
+    autoBind: true,
   };
-
   /**
-   * Configure global Stream settings.
-   *
-   * @param config - Configuration options
+   * Configure global Stream behavior.
    *
    * @example
    * ```typescript
-   * // Configure worker pool size based on your hardware
-   * Stream.configure({ workerPoolSize: 8 });
+   * // Default: Convenience (auto-bind enabled)
+   * Stream.config = { autoBind: true };
+   * const stream = new Stream<number>();
+   * source.listen(stream.push); // Works!
    *
-   * // Now parallel execution uses 8 workers
-   * stream.pipe(map(x => heavyComputation(x), { execution: 'parallel' }));
+   * // Performance: Manual binding (auto-bind disabled)
+   * Stream.config = { autoBind: false };
+   * const stream = new Stream<number>();
+   * source.listen(stream.push.bind(stream)); // Must bind
+   *
+   * // Trade-off:
+   * // autoBind: true  → ~600 bytes per stream, zero mental overhead
+   * // autoBind: false → zero overhead, must remember to bind
    * ```
    */
-  static configure(config: Partial<Stream.Config>): void {
+  static set config(config: Partial<Stream.Config>) {
     Stream._config = { ...Stream._config, ...config };
   }
-
   /**
    * Get current configuration.
    *
@@ -521,17 +550,130 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * console.log(config.workerPoolSize); // 4 (default)
    * ```
    */
-  static getConfig(): Readonly<Stream.Config> {
+  static get config(): Readonly<Stream.Config> {
     return { ...Stream._config };
   }
 }
 
 export namespace Stream {
-  export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-  export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
-  export type Abort = (() => void) & Disposable;
-  export type Transformer<T extends Stream<any>, U extends Stream<any>> = (stream: T) => U;
+  export class Controller extends Stream<void> {
+    protected _aborted = false;
 
+    constructor(private cleanup: () => void) {
+      super();
+      this.abort = this.abort.bind(this);
+    }
+    get aborted() {
+      return this._aborted;
+    }
+    abort(): void {
+      if (this._aborted) return;
+      this._aborted = true;
+      this.push(); // Notify observers
+      this.cleanup();
+    }
+
+    [Symbol.dispose](): void {
+      this.abort();
+      super[Symbol.dispose]();
+    }
+  }
+  /**
+   * Extracts the value type from a Stream type.
+   *
+   * @example
+   * ```typescript
+   * type NumberStream = Stream<number>;
+   * type Value = Stream.ValueOf<NumberStream>; // number
+   * ```
+   */
+  export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
+  /**
+   * Function that returns an async generator to produce stream values.
+   * Used for iteration-based transformers.
+   *
+   * @example
+   * ```typescript
+   * const countdown = new Stream(async function* () {
+   *   for (let i = 5; i > 0; i--) {
+   *     yield i;
+   *     await new Promise(resolve => setTimeout(resolve, 1000));
+   *   }
+   * });
+   * ```
+   */
+  export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
+  /**
+   * Callback-based function for creating streams with push semantics.
+   * Executes when first listener is added, aborts when last listener is removed.
+   *
+   * Lifecycle:
+   * - Executes on first listener
+   * - Runs while listeners exist
+   * - Calls onAbort when last listener removed
+   * - Re-executes if new listener added after all removed
+   *
+   * @param push - Function to emit values to the stream
+   * @param onAbort - Register cleanup function (called when last listener removed)
+   * @param output - The output stream (for advanced patterns)
+   *
+   * @example
+   * ```typescript
+   * // Simple timer
+   * const timer = new Stream<number>((push, onAbort) => {
+   *   const interval = setInterval(() => push(Date.now()), 1000);
+   *   onAbort(() => clearInterval(interval));
+   * });
+   *
+   * // Merge multiple streams
+   * const merge = (...streams) => (source) =>
+   *   new Stream((push, onAbort) => {
+   *     const cleanups = [source, ...streams].map(s => s.listen(push));
+   *     onAbort(() => cleanups.forEach(c => c()));
+   *   });
+   *
+   * // Track listener events
+   * const tracked = new Stream((push, onAbort, output) => {
+   *   output.listenerAdded.listen(() => console.log('Consumer connected'));
+   *   output.listenerRemoved.listen(() => console.log('Consumer disconnected'));
+   *   setInterval(() => push(Date.now()), 1000);
+   * });
+   * ```
+   */
+  export type FunctionSource<VALUE> = (
+    push: (value: VALUE, ...values: VALUE[]) => void,
+    onAbort: (fn: () => void) => void,
+    output: Stream<VALUE>,
+  ) => void;
+  /**
+   * Cleanup function returned by listen(), also implements Disposable.
+   *
+   * @example
+   * ```typescript
+   * const abort = stream.listen(console.log);
+   * abort(); // Remove listener
+   *
+   * // Or with using
+   * using abort = stream.listen(console.log);
+   * // Auto-cleanup when scope exits
+   * ```
+   */
+  /**
+   * Function that transforms one stream into another.
+   *
+   * @example
+   * ```typescript
+   * const double: Stream.Transformer<Stream<number>, Stream<number>> =
+   *   (stream) => new Stream(async function* () {
+   *     for await (const value of stream) {
+   *       yield value * 2;
+   *     }
+   *   });
+   *
+   * stream.pipe(double);
+   * ```
+   */
+  export type Transformer<T extends Stream<any>, U extends Stream<any>> = (stream: T) => U;
   export interface Config {
     /**
      * Number of Web Workers in the pool for parallel execution.
@@ -548,5 +690,12 @@ export namespace Stream {
      * ```
      */
     workerPoolSize: number;
+    /**
+     * Auto-bind methods in constructor for use as callbacks.
+     * When true: All methods work as callbacks (convenience, ~600 bytes overhead)
+     * When false: Must manually bind when passing as callbacks (performance, zero overhead)
+     * @default true
+     */
+    autoBind: boolean;
   }
 }
