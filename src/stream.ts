@@ -487,10 +487,11 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   // pipe<OUTPUT extends Stream<any>>(transformer: Stream.Transformer<typeof this, OUTPUT>): OUTPUT {
   //   return transformer(this);
   // }
-  pipe<OUTPUT extends Stream<any>>(
-    transformer: Stream.Transformer<this, OUTPUT>,
+  pipe<OUTPUT extends Stream<any>, TR extends Stream.Transformer<this, OUTPUT, any[]>>(
+    transformer: Stream.Transformer<this, OUTPUT, any[]> | TR,
+    ...args: TR extends Stream.Transformer<any, any, infer ARGS> ? ARGS : never
   ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this, keyof Stream<any>> & Omit<OUTPUT, keyof Stream<any>>> {
-    const output = transformer(this);
+    const output = transformer(this, ...args);
 
     // Runtime: Copy all properties from this to output
     for (const key in this) {
@@ -675,7 +676,10 @@ export namespace Stream {
    * stream.pipe(double);
    * ```
    */
-  export type Transformer<T extends Stream<any>, U extends Stream<any>> = (stream: T) => U;
+  export type Transformer<T extends Stream<any>, U extends Stream<any>, A extends any[] = []> = (
+    stream: T,
+    ...args: A
+  ) => U;
   export interface Config {
     /**
      * Number of Web Workers in the pool for parallel execution.
@@ -702,4 +706,5 @@ export namespace Stream {
   }
 }
 
-type Prettify<T> = { [k in keyof T]: T[k] } & {};
+// type Prettify<T> = { [k in keyof T]: T[k] } & {};
+type Prettify<T> = T extends object ? { [K in keyof T]: T[K] } : T;
