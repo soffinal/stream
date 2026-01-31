@@ -1,15 +1,15 @@
 import { Stream } from "../../stream";
 import { gate, Gate } from "../gate";
+import { map } from "../sequential";
+import { snapshot } from "../snapshot";
 
 /**
  * Stream with reactive state management via getter/setter.
  *
  * @template T - The type of values in the stream
  */
-export type State<T> = Stream<T> & {
-  state: {
-    value: T;
-  };
+export type State<T> = {
+  value: T;
 };
 
 /**
@@ -40,8 +40,8 @@ export type State<T> = Stream<T> & {
  * counter.state.value = 5; // Logs: "Counter: 5"
  * ```
  */
-export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, State<T>> {
-  return (source: Stream<T>): State<T> => {
+export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<T> & { state: State<T> }> {
+  return (source) => {
     let current = initialValue;
 
     const output = new Stream<T>(async function* () {
@@ -70,11 +70,14 @@ export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, State<T
       configurable: false,
     });
 
-    return output as State<T>;
+    return output as Stream<T> & { state: State<T> };
   };
 }
-const stream = new Stream<number>();
-const s = stream.pipe(state(0));
-const s2 = s.pipe(gate());
 
-const s3 = s2;
+const s = new Stream<number>()
+  .pipe(state(0))
+  .pipe(map((v) => v.toFixed()))
+  .pipe(gate())
+  .pipe(snapshot("v1"))
+  .pipe(map((v) => Number(v)))
+  .pipe(snapshot("v2"));

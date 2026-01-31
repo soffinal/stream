@@ -6,8 +6,8 @@ export function concurrentOrdered<VALUE, MAPPED>(
   return (stream) => {
     return new Stream<MAPPED>(async function* () {
       const output = new Stream<MAPPED | Promise<MAPPED>>();
-      const abort = stream.listen(async (value) => {
-        output.push(mapper(value));
+      const ctr = stream.listen(async (value) => {
+        output.push(Promise.resolve().then(() => mapper(value)));
       });
 
       try {
@@ -15,7 +15,7 @@ export function concurrentOrdered<VALUE, MAPPED>(
           yield mapped;
         }
       } finally {
-        abort();
+        ctr.abort();
         return;
       }
     });

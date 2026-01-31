@@ -5,12 +5,10 @@ import { Stream } from "../../stream";
  *
  * @template T - The type of values in the stream
  */
-export type Gate<T> = Stream<T> & {
-  gate: {
-    open(): void;
-    close(): void;
-    readonly isOpen: boolean;
-  };
+export type Gate<T> = {
+  open(): void;
+  close(): void;
+  readonly isOpen: boolean;
 };
 
 /**
@@ -41,8 +39,8 @@ export type Gate<T> = Stream<T> & {
  * console.log(events.gate.isOpen); // false
  * ```
  */
-export function gate<T>(): Stream.Transformer<Stream<T>, Gate<T>> {
-  return (source: Stream<T>): Gate<T> => {
+export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T> & { gate: Gate<T> }> {
+  return (source) => {
     let isOpen = true;
 
     const output = new Stream<T>(async function* () {
@@ -63,6 +61,6 @@ export function gate<T>(): Stream.Transformer<Stream<T>, Gate<T>> {
       configurable: false,
     });
 
-    return output as Gate<T>;
+    return output as Stream<T> & { gate: Gate<T> };
   };
 }

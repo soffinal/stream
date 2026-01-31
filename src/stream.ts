@@ -594,24 +594,6 @@ export namespace Stream {
     }
   }
   /**
-   * Helper to create augmented transformers.
-   * Handles prop merging and type inference automatically.
-   */
-  // export function augment<T, P, NewProps>(
-  //   source: Stream<T, P>,
-  //   generator: Stream.FunctionGenerator<T>,
-  //   propsFactory: (output: Stream<T, P & NewProps>) => NewProps
-  // ): Stream<T, P & NewProps> {
-  //   const output = source.clone(generator);
-  //   const newProps = propsFactory(output as Stream<T, P & NewProps>);
-
-  //   for (const [key, value] of Object.entries(newProps)) {
-  //     output.addAugmentation(key, value);
-  //   }
-
-  //   return output as Stream<T, P & NewProps>;
-  // }
-  /**
    * Extracts the value type from a Stream type.
    *
    * @example
