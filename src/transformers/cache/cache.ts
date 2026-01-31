@@ -1,18 +1,20 @@
 import { Stream } from "../../stream";
 
-export function cache<T>(options?: cache.Options<T>): Stream.Transformer<Stream<T>, cache.Cache<T>> {
-  const { initialValues = [], size, dropStrategy = "oldest", ttl } = options ?? {};
+export function cache<T>(
+  options?: cache.Options<T>,
+): Stream.Transformer<Stream<T>, Stream<T> & { cache: cache.Cache<T> }> {
+  return function (source) {
+    const { initialValues = [], size, dropStrategy = "oldest", ttl } = options ?? {};
 
-  const cacheArray: CacheEntry<T>[] = initialValues.map((value) => ({
-    value,
-    timestamp: Date.now(),
-  }));
+    const cacheArray: CacheEntry<T>[] = initialValues.map((value) => ({
+      value,
+      timestamp: Date.now(),
+    }));
 
-  return (source: Stream<T>): cache.Cache<T> => {
     const output = new Stream<T>();
     const evicted = new Stream<{ value: T; reason: "size" | "ttl" }>();
 
-    let cleanupTimer: ReturnType<typeof setInterval> | undefined;
+    let cleanupTimer: any;
 
     const startCleanup = () => {
       if (ttl === undefined || cleanupTimer !== undefined) return;
@@ -36,8 +38,8 @@ export function cache<T>(options?: cache.Options<T>): Stream.Transformer<Stream<
             cleanupTimer = undefined;
           }
         },
-        Math.min(ttl / 4, 500),
-      ); // Check at quarter TTL or max 500ms
+        Math.min(ttl / 4, Math.max(500, ttl / 10)),
+      ); // Check at quarter TTL, min 500ms, max 10% of TTL
     };
 
     const stopCleanup = () => {
@@ -96,20 +98,18 @@ export function cache<T>(options?: cache.Options<T>): Stream.Transformer<Stream<
       configurable: false,
     });
 
-    return output as cache.Cache<T>;
+    return output as Stream<T> & { cache: cache.Cache<T> };
   };
 }
 
 export namespace cache {
-  export type Cache<T> = Stream<T> & {
-    cache: {
-      readonly values: T[];
-      readonly size: number | undefined;
-      readonly dropStrategy: "oldest" | "newest";
-      readonly ttl: number | undefined;
-      readonly evicted: Stream<{ value: T; reason: "size" | "ttl" }>;
-      clear(): void;
-    };
+  export type Cache<T> = {
+    readonly values: T[];
+    readonly size: number | undefined;
+    readonly dropStrategy: "oldest" | "newest";
+    readonly ttl: number | undefined;
+    readonly evicted: Stream<{ value: T; reason: "size" | "ttl" }>;
+    clear(): void;
   };
 
   export type Options<T> = {

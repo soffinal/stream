@@ -8,9 +8,8 @@ import { Stream } from "../../stream";
  * stream.pipe(audit(300)) // Emit first, ignore for 300ms
  * ```
  */
-export const audit =
-  <T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> =>
-  (source: Stream<T>) => {
+export function audit<T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> {
+  return function (source) {
     return new Stream<T>(async function* () {
       let timer: any = null;
       let canEmit = true;
@@ -29,3 +28,4 @@ export const audit =
       }
     });
   };
+}

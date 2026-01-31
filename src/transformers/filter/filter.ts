@@ -1,6 +1,6 @@
 import { Stream } from "../../stream.ts";
 
-export const filter: filter.Filter = <VALUE, FILTERED extends VALUE = VALUE>(
+export const filter: filter.Function = <VALUE, FILTERED extends VALUE = VALUE>(
   predicate: filter.Predicate<VALUE>,
 ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>> => {
   return (stream) => {
@@ -20,7 +20,7 @@ export namespace filter {
   export type GardPredicate<VALUE, FILTERED extends VALUE = VALUE> = (value: VALUE) => value is FILTERED;
   export type Predicate<VALUE> = (value: VALUE) => boolean;
 
-  export interface Filter {
+  export interface Function {
     <VALUE, FILTERED extends VALUE = VALUE>(
       predicate: GardPredicate<VALUE, FILTERED>,
     ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>>;

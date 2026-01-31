@@ -1,16 +1,7 @@
 import { Stream } from "../../stream";
-import { gate, Gate } from "../gate";
+import { gate } from "../gate";
 import { map } from "../sequential";
 import { snapshot } from "../snapshot";
-
-/**
- * Stream with reactive state management via getter/setter.
- *
- * @template T - The type of values in the stream
- */
-export type State<T> = {
-  value: T;
-};
 
 /**
  * Adds `.state.value` getter/setter to a stream for reactive state management.
@@ -40,7 +31,7 @@ export type State<T> = {
  * counter.state.value = 5; // Logs: "Counter: 5"
  * ```
  */
-export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<T> & { state: State<T> }> {
+export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<T> & { state: state.State<T> }> {
   return (source) => {
     let current = initialValue;
 
@@ -70,7 +61,13 @@ export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<
       configurable: false,
     });
 
-    return output as Stream<T> & { state: State<T> };
+    return output as Stream<T> & { state: state.State<T> };
+  };
+}
+
+export namespace state {
+  export type State<T> = {
+    value: T;
   };
 }
 

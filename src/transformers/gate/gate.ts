@@ -1,17 +1,6 @@
 import { Stream } from "../../stream";
 
 /**
- * Stream with flow control via open/close methods.
- *
- * @template T - The type of values in the stream
- */
-export type Gate<T> = {
-  open(): void;
-  close(): void;
-  readonly isOpen: boolean;
-};
-
-/**
  * Adds flow control to a stream with `.gate.open()` and `.gate.close()` methods.
  * Gate starts open by default. Closed gate blocks all values.
  *
@@ -39,7 +28,7 @@ export type Gate<T> = {
  * console.log(events.gate.isOpen); // false
  * ```
  */
-export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T> & { gate: Gate<T> }> {
+export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T> & { gate: gate.Gate<T> }> {
   return (source) => {
     let isOpen = true;
 
@@ -61,6 +50,14 @@ export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T> & { gate: Gat
       configurable: false,
     });
 
-    return output as Stream<T> & { gate: Gate<T> };
+    return output as Stream<T> & { gate: gate.Gate<T> };
+  };
+}
+
+export namespace gate {
+  export type Gate<T> = {
+    open(): void;
+    close(): void;
+    readonly isOpen: boolean;
   };
 }

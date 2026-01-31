@@ -1,8 +1,10 @@
 import { Stream } from "../../stream";
 
-export const bind =
-  <VALUE>(other: Stream<VALUE>, ...others: Stream<VALUE>[]): Stream.Transformer<Stream<VALUE>, Stream<VALUE>> =>
-  (stream) => {
+export function bind<VALUE>(
+  other: Stream<VALUE>,
+  ...others: Stream<VALUE>[]
+): Stream.Transformer<Stream<VALUE>, Stream<VALUE>> {
+  return function (stream) {
     const output = new Stream<VALUE>();
 
     const sources = [other, ...others];
@@ -21,3 +23,4 @@ export const bind =
       }
     });
   };
+}

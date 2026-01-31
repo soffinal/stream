@@ -21,7 +21,7 @@ import { Stream } from "../../stream";
  * ```
  */
 export function branch<T>(target: Stream<T>): Stream.Transformer<Stream<T>, Stream<T>> {
-  return (source: Stream<T>): Stream<T> => {
+  return function (source) {
     return new Stream<T>(async function* () {
       for await (const value of source) {
         target.push(value);

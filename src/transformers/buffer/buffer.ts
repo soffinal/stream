@@ -1,7 +1,7 @@
 import { Stream } from "../../stream.ts";
 
 export function buffer<T>(size: number): Stream.Transformer<Stream<T>, Stream<T[]>> {
-  return (source: Stream<T>): Stream<T[]> => {
+  return function (source) {
     return new Stream<T[]>(async function* () {
       const buf: T[] = [];
 
