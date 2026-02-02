@@ -111,7 +111,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     (value: VALUE) => void,
     { weakRef: WeakRef<object>; controller: Stream.Controller } | undefined
   > = new Map();
-  protected _functionGenerator: Stream.FunctionGenerator<VALUE> | Stream.FunctionSource<VALUE> | undefined;
+  protected _functionGenerator: Stream.FunctionGenerator<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
   protected _listenerAdded: Stream<void> | undefined;
   protected _listenerRemoved: Stream<void> | undefined;
@@ -153,8 +153,8 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   constructor();
   constructor(stream: Stream<VALUE>);
   constructor(fn: Stream.FunctionGenerator<VALUE>);
-  constructor(fn: Stream.FunctionSource<VALUE>);
-  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream.FunctionSource<VALUE> | Stream<VALUE>) {
+
+  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
     this._functionGenerator = streamOrFn instanceof Stream ? () => streamOrFn[Symbol.asyncIterator]() : streamOrFn;
 
     if (Stream._config.autoBind) {
@@ -376,28 +376,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     self._listenerAdded?.push();
 
     if (self._functionGenerator && self._listeners.size === 1) {
-      if (self._functionGenerator.length === 0) {
-        self._generator = (self._functionGenerator as Stream.FunctionGenerator<VALUE>)() as AsyncGenerator<VALUE>;
-      } else {
-        const output = new Stream<VALUE>();
-        let abort: () => void = () => {};
-        (self._functionGenerator as Stream.FunctionSource<VALUE>)(
-          output.push.bind(output),
-          (fn) => (abort = fn),
-          output,
-        );
-
-        this._generator = (async function* () {
-          try {
-            for await (const value of output) {
-              yield value;
-            }
-          } finally {
-            abort();
-            return;
-          }
-        })();
-      }
+      self._generator = self._functionGenerator();
 
       (async () => {
         for await (const value of self._generator!) {
@@ -448,59 +427,20 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
       });
     }).then(onfulfilled);
   }
-  /**
-   * Applies a transformer function to this stream, enabling functional composition.
-   *
-   * @param transformer - Function that takes a stream and returns any output type
-   * @returns The result of the transformer function
-   *
-   * @see {@link Stream} - Complete copy-paste transformers library
-   *
-   * @example
-   * ```typescript
-   * const numbers = new Stream<number>();
-   *
-   * // Chain transformers
-   * const result = numbers
-   *   .pipe(filter({}, (_, n) => [n > 0, {}]))
-   *   .pipe(map({}, (_, n) => [n * 2, {}]))
-   *   .pipe(toState(0));
-   *
-   * // Custom transformer
-   * const throttle = <T>(ms: number) => (stream: Stream<T>) =>
-   *   new Stream<T>(async function* () {
-   *     let lastEmit = 0;
-   *     for await (const value of stream) {
-   *       const now = Date.now();
-   *       if (now - lastEmit >= ms) {
-   *         yield value;
-   *         lastEmit = now;
-   *       }
-   *     }
-   *   });
-   *
-   * // Transform to any type
-   * const stringResult = numbers.pipe(throttle(1000));
-   * const stateResult = numbers.pipe(toState(0));
-   * ```
-   */
-  // pipe<OUTPUT extends Stream<any>>(transformer: Stream.Transformer<typeof this, OUTPUT>): OUTPUT {
-  //   return transformer(this);
-  // }
-  pipe<OUTPUT extends Stream<any>, TR extends Stream.Transformer<this, OUTPUT, any[]>>(
-    transformer: Stream.Transformer<this, OUTPUT, any[]> | TR,
-    ...args: TR extends Stream.Transformer<any, any, infer ARGS> ? ARGS : never
-  ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this, keyof Stream<any>> & Omit<OUTPUT, keyof Stream<any>>> {
-    const output = transformer(this, ...args);
+  pipe<OUTPUT extends Stream<any>>(
+    transformer: Stream.Transformer<this, OUTPUT>,
+  ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this & OUTPUT, keyof Stream<any>>> {
+    const output = transformer(this);
 
-    // Runtime: Copy all properties from this to output
     for (const key in this) {
-      if (this.hasOwnProperty(key) && !(key in output)) {
-        (output as any)[key] = this[key];
+      if (!(key in output)) {
+        const descriptor = Object.getOwnPropertyDescriptor(this, key);
+        if (descriptor) {
+          Object.defineProperty(output, key, descriptor);
+        }
       }
     }
 
-    // Type: Output with capabilities from this
     return output as never;
   }
   [Symbol.dispose](): void {
@@ -619,48 +559,7 @@ export namespace Stream {
    * ```
    */
   export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
-  /**
-   * Callback-based function for creating streams with push semantics.
-   * Executes when first listener is added, aborts when last listener is removed.
-   *
-   * Lifecycle:
-   * - Executes on first listener
-   * - Runs while listeners exist
-   * - Calls onAbort when last listener removed
-   * - Re-executes if new listener added after all removed
-   *
-   * @param push - Function to emit values to the stream
-   * @param onAbort - Register cleanup function (called when last listener removed)
-   * @param output - The output stream (for advanced patterns)
-   *
-   * @example
-   * ```typescript
-   * // Simple timer
-   * const timer = new Stream<number>((push, onAbort) => {
-   *   const interval = setInterval(() => push(Date.now()), 1000);
-   *   onAbort(() => clearInterval(interval));
-   * });
-   *
-   * // Merge multiple streams
-   * const merge = (...streams) => (source) =>
-   *   new Stream((push, onAbort) => {
-   *     const cleanups = [source, ...streams].map(s => s.listen(push));
-   *     onAbort(() => cleanups.forEach(c => c()));
-   *   });
-   *
-   * // Track listener events
-   * const tracked = new Stream((push, onAbort, output) => {
-   *   output.listenerAdded.listen(() => console.log('Consumer connected'));
-   *   output.listenerRemoved.listen(() => console.log('Consumer disconnected'));
-   *   setInterval(() => push(Date.now()), 1000);
-   * });
-   * ```
-   */
-  export type FunctionSource<VALUE> = (
-    push: (value: VALUE, ...values: VALUE[]) => void,
-    onAbort: (fn: () => void) => void,
-    output: Stream<VALUE>,
-  ) => void;
+
   /**
    * Function that transforms one stream into another.
    *
@@ -676,10 +575,7 @@ export namespace Stream {
    * stream.pipe(double);
    * ```
    */
-  export type Transformer<T extends Stream<any>, U extends Stream<any>, A extends any[] = []> = (
-    stream: T,
-    ...args: A
-  ) => U;
+  export type Transformer<INPUT extends Stream<any>, OUTPUT extends Stream<any> = INPUT> = (stream: INPUT) => OUTPUT;
   export interface Config {
     /**
      * Number of Web Workers in the pool for parallel execution.
@@ -708,3 +604,6 @@ export namespace Stream {
 
 // type Prettify<T> = { [k in keyof T]: T[k] } & {};
 type Prettify<T> = T extends object ? { [K in keyof T]: T[K] } : T;
+
+type Output<TRANSFORMER extends Stream.Transformer<any, Stream<any>>> =
+  TRANSFORMER extends Stream.Transformer<any, infer OUTPUT> ? OUTPUT : never;

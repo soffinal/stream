@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { Stream } from "../../stream";
 import { branch } from "./branch";
 import { filter } from "../filter";
-import { map } from "../map";
+import { map } from "../sequential";
 
 describe("branch transformer", () => {
   it("should forward values to target stream", async () => {

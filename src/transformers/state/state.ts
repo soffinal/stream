@@ -1,13 +1,10 @@
 import { Stream } from "../../stream";
-import { gate } from "../gate";
-import { map } from "../sequential";
-import { snapshot } from "../snapshot";
 
 /**
  * Adds `.state.value` getter/setter to a stream for reactive state management.
  * Supports automatic dependency tracking when used with `effect()`.
  *
- * @template T - The type of values in the stream
+ * @template VALUE - The type of values in the stream
  * @param initialValue - Initial state value
  * @returns Transformer that adds state behavior
  *
@@ -31,11 +28,13 @@ import { snapshot } from "../snapshot";
  * counter.state.value = 5; // Logs: "Counter: 5"
  * ```
  */
-export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<T> & { state: state.State<T> }> {
+export function state<VALUE>(
+  initialValue: VALUE,
+): Stream.Transformer<Stream<VALUE>, Stream<VALUE> & { state: state.State<VALUE> }> {
   return (source) => {
     let current = initialValue;
 
-    const output = new Stream<T>(async function* () {
+    const output = new Stream<VALUE>(async function* () {
       try {
         for await (const value of source) {
           current = value;
@@ -51,7 +50,7 @@ export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<
         get value() {
           return current;
         },
-        set value(newValue: T) {
+        set value(newValue: VALUE) {
           if (current === newValue) return;
           current = newValue;
           output.push(newValue);
@@ -61,20 +60,12 @@ export function state<T>(initialValue: T): Stream.Transformer<Stream<T>, Stream<
       configurable: false,
     });
 
-    return output as Stream<T> & { state: state.State<T> };
+    return output as Stream<VALUE> & { state: state.State<VALUE> };
   };
 }
 
 export namespace state {
-  export type State<T> = {
-    value: T;
+  export type State<VALUE> = {
+    value: VALUE;
   };
 }
-
-const s = new Stream<number>()
-  .pipe(state(0))
-  .pipe(map((v) => v.toFixed()))
-  .pipe(gate())
-  .pipe(snapshot("v1"))
-  .pipe(map((v) => Number(v)))
-  .pipe(snapshot("v2"));

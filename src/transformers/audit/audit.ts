@@ -1,5 +1,4 @@
 import { Stream } from "../../stream";
-import { map } from "../sequential";
 
 /**
  * Emit first value, then ignore until quiet period
@@ -10,9 +9,9 @@ import { map } from "../sequential";
  * ```
  */
 
-export function audit<T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> {
-  return function (source: Stream<T>) {
-    return new Stream<T>(async function* () {
+export function audit<T>(ms: number): Stream.Transformer<Stream<T>> {
+  return (source) =>
+    new Stream<T>(async function* () {
       let timer: any = null;
       let canEmit = true;
 
@@ -22,19 +21,11 @@ export function audit<T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> {
             yield value;
             canEmit = false;
             clearTimeout(timer);
-            timer = setTimeout(() => (canEmit = true), ms);
+            timer = setTimeout(() => (canEmit = true), ms!);
           }
         }
       } finally {
         clearTimeout(timer);
       }
     });
-  };
-}
-
-const s = new Stream<number>().pipe(map((v) => v.toFixed()));
-const s2 = new Stream<number>().pipe(audit2, 6);
-
-function audit2<T>(source: Stream<T>, ms: number) {
-  return audit<T>(ms)(source);
 }
