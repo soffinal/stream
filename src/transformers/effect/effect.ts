@@ -1,10 +1,10 @@
 import { Stream } from "../../stream.ts";
 
-export const effect: effect.Effect = <VALUE>(
-  callback: effect.Callback<VALUE>,
-): Stream.Transformer<Stream<VALUE>, Stream<VALUE>> => {
+export function effect<INPUT extends Stream<any>>(
+  callback: (value: Stream.ValueOf<INPUT>) => void,
+): Stream.Transformer<INPUT, Stream<Stream.ValueOf<INPUT>>> {
   return (stream) => {
-    return new Stream<VALUE>(async function* () {
+    return new Stream<Stream.ValueOf<INPUT>>(async function* () {
       try {
         for await (const value of stream) {
           callback(value);
@@ -15,12 +15,4 @@ export const effect: effect.Effect = <VALUE>(
       }
     });
   };
-};
-
-export namespace effect {
-  export type Callback<VALUE> = (value: VALUE) => any;
-
-  export interface Effect {
-    <VALUE>(predicate: Callback<VALUE>): Stream.Transformer<Stream<VALUE>, Stream<VALUE>>;
-  }
 }

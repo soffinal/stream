@@ -432,12 +432,22 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this & OUTPUT, keyof Stream<any>>> {
     const output = transformer(this);
 
+    // Get base Stream own properties (from a fresh instance)
+    const baseProps = new Set(Object.keys(new Stream()));
+
+    // Detect capability override
+    for (const key in output) {
+      if (baseProps.has(key)) continue;
+      if (output.hasOwnProperty(key) && this.hasOwnProperty(key)) {
+        throw new Error(
+          `Capability override detected: "${key}" already exists. ` +
+            `Use snapshot() to preserve multiple instances of the same capability transformer.`,
+        );
+      }
+    }
     for (const key in this) {
       if (!(key in output)) {
-        const descriptor = Object.getOwnPropertyDescriptor(this, key);
-        if (descriptor) {
-          Object.defineProperty(output, key, descriptor);
-        }
+        Object.defineProperty(output, key, Object.getOwnPropertyDescriptor(this, key)!);
       }
     }
 
@@ -602,8 +612,4 @@ export namespace Stream {
   }
 }
 
-// type Prettify<T> = { [k in keyof T]: T[k] } & {};
 type Prettify<T> = T extends object ? { [K in keyof T]: T[K] } : T;
-
-type Output<TRANSFORMER extends Stream.Transformer<any, Stream<any>>> =
-  TRANSFORMER extends Stream.Transformer<any, infer OUTPUT> ? OUTPUT : never;
