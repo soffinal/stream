@@ -81,7 +81,7 @@ class WorkerPoolManager {
   }
 
   private getWorker(): Worker {
-    const config = Stream.getConfig();
+    const config = Stream.config;
     if (this.workers.length < config.workerPoolSize) {
       const worker = this.createWorker();
       this.workers.push(worker);

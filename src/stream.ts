@@ -432,10 +432,6 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   ): Stream<Stream.ValueOf<OUTPUT>> & Prettify<Omit<this & OUTPUT, keyof Stream<any>>> {
     const output = transformer(this);
 
-    // Get base Stream own properties (from a fresh instance)
-    const baseProps = new Set(Object.keys(new Stream()));
-
-    // Detect capability override
     for (const key in output) {
       if (baseProps.has(key)) continue;
       if (output.hasOwnProperty(key) && this.hasOwnProperty(key)) {
@@ -613,3 +609,5 @@ export namespace Stream {
 }
 
 type Prettify<T> = T extends object ? { [K in keyof T]: T[K] } : T;
+
+const baseProps = new Set(Object.keys(new Stream()));

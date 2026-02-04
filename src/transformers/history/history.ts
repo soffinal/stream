@@ -1,4 +1,4 @@
-import { map } from "../map";
+import { statefull } from "../statefull";
 
 /**
  * Emit array of last N values (sliding window)
@@ -13,7 +13,7 @@ import { map } from "../map";
  * ```
  */
 export const history = <T>(size: number) =>
-  map<T, { window: T[] }, T[]>({ window: [] }, (state, value) => {
+  statefull<T, { window: T[] }, T[]>({ window: [] }, (state, value) => {
     const newWindow = [...state.window, value].slice(-size);
     return [newWindow, { window: newWindow }];
   });

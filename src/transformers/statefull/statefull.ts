@@ -5,9 +5,8 @@ export function statefull<VALUE, STATE extends Record<string, unknown>, MAPPED>(
   mapper: statefull.Mapper<VALUE, STATE, MAPPED>,
 ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>> {
   return (stream) => {
-    let currentState = initialState;
-
     return new Stream<MAPPED>(async function* () {
+      let currentState = initialState;
       try {
         for await (const value of stream) {
           const [mapped, state] = await mapper(currentState, value);
