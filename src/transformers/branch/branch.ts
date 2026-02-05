@@ -1,4 +1,5 @@
 import { Stream } from "../../stream";
+import { merge } from "../merge";
 
 /**
  * Forwards all values to a target stream while passing them through.
@@ -20,12 +21,16 @@ import { Stream } from "../../stream";
  * monitoring.listen(console.log);
  * ```
  */
-export function branch<T>(target: Stream<T>): Stream.Transformer<Stream<T>, Stream<T>> {
+export function branch<T>(target: Stream<T>): Stream.Transformer<Stream<T>> {
   return function (source) {
+    const oldSource = target.getSource();
+    target.setSource(oldSource ? source.pipe(merge(oldSource)) : source);
+
     return new Stream<T>(async function* () {
-      for await (const value of source) {
-        target.push(value);
-        yield value;
+      try {
+        yield* source;
+      } finally {
+        return;
       }
     });
   };

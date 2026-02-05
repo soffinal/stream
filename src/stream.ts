@@ -113,8 +113,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   > = new Map();
   protected _functionGenerator: Stream.FunctionGenerator<VALUE> | undefined;
   protected _generator: AsyncGenerator<VALUE, void> | undefined;
-  protected _listenerAdded: Stream<void> | undefined;
-  protected _listenerRemoved: Stream<void> | undefined;
+  protected _events: Stream<Stream.Events<VALUE>> | undefined;
 
   /**
    * Creates a new Stream instance.
@@ -153,16 +152,17 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   constructor();
   constructor(stream: Stream<VALUE>);
   constructor(fn: Stream.FunctionGenerator<VALUE>);
-
   constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
-    this._functionGenerator = streamOrFn instanceof Stream ? () => streamOrFn[Symbol.asyncIterator]() : streamOrFn;
+    if (streamOrFn) this.setSource(streamOrFn as never);
 
     if (Stream._config.autoBind) {
       this.push = this.push.bind(this);
       this.listen = this.listen.bind(this);
+      this.getSource = this.getSource.bind(this);
+      this.setSource = this.setSource.bind(this);
       this.then = this.then.bind(this);
       this.pipe = this.pipe.bind(this);
-      this.clear = this.clear.bind(this);
+      this.removeListeners = this.removeListeners.bind(this);
       this.withContext = this.withContext.bind(this);
     }
   }
@@ -186,40 +186,12 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
   get hasListeners(): boolean {
     return this._listeners.size > 0;
   }
-  /**
-   * Stream that emits when a listener is added.
-   *
-   * @see {@link Stream} - Complete copy-paste transformers library
-   *
-   * @example
-   * ```typescript
-   * const stream = new Stream<number>();
-   * stream.listenerAdded.listen(() => console.log('Listener added'));
-   *
-   * stream.listen(value => console.log(value)); // Triggers 'Listener added'
-   * ```
-   */
-  get listenerAdded(): Stream<void> {
-    if (!this._listenerAdded) this._listenerAdded = new Stream<void>();
-    return this._listenerAdded;
+  get listenersCount(): number {
+    return this._listeners.size;
   }
-  /**
-   * Stream that emits when a listener is removed.
-   *
-   * @see {@link Stream} - Complete copy-paste transformers library
-   *
-   * @example
-   * ```typescript
-   * const stream = new Stream<number>();
-   * stream.listenerRemoved.listen(() => console.log('Listener removed'));
-   *
-   * const cleanup = stream.listen(value => console.log(value));
-   * cleanup(); // Triggers 'Listener removed'
-   * ```
-   */
-  get listenerRemoved(): Stream<void> {
-    if (!this._listenerRemoved) this._listenerRemoved = new Stream<void>();
-    return this._listenerRemoved;
+  get events(): Stream<Stream.Events<VALUE>> {
+    if (!this._events) this._events = new Stream();
+    return this._events;
   }
   async *[Symbol.asyncIterator](): AsyncGenerator<VALUE, void> {
     const queue: VALUE[] = [];
@@ -373,29 +345,95 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
 
     self._listeners.set(listener, weakRef ? { weakRef, controller } : undefined);
 
-    self._listenerAdded?.push();
+    self._events?.push({ type: "listener-added" });
 
-    if (self._functionGenerator && self._listeners.size === 1) {
-      self._generator = self._functionGenerator();
-
-      (async () => {
-        for await (const value of self._generator!) {
-          self.push(value);
-        }
-      })();
+    if (self._listeners.size === 1) {
+      self._events?.push({ type: "first-listener-added" });
+      self._startGenerator();
     }
 
     return controller;
     function abort(): void {
       self._listeners.delete(listener);
-      self._listenerRemoved?.push();
+      self._events?.push({ type: "listener-removed" });
       if (self._listeners.size === 0) {
         self._generator?.return();
         self._generator = undefined;
+        self._events?.push({ type: "last-listener-removed" });
       }
       abortSignal?.();
       abortSignal = undefined;
       weakRef = undefined;
+    }
+  }
+  protected _startGenerator(): void {
+    if (!this._functionGenerator || this._generator || !this.hasListeners) return;
+
+    this._generator = this._functionGenerator();
+    (async () => {
+      for await (const value of this._generator!) this.push(value);
+    })();
+  }
+  /**
+   * Gets the current source generator function.
+   * Returns a new Stream that wraps the generator for composition.
+   *
+   * @returns Stream wrapping current source, or undefined if no source
+   *
+   * @example
+   * ```typescript
+   * const target = new Stream<number>();
+   * target.setSource(source1);
+   *
+   * // Add new source while preserving old one
+   * const oldSource = target.getSource();
+   * if (oldSource) {
+   *   target.setSource(source2.pipe(merge(oldSource)));
+   * }
+   * ```
+   */
+  getSource(): Stream<VALUE> | undefined {
+    return this._functionGenerator ? new Stream(this._functionGenerator) : undefined;
+  }
+  /**
+   * Sets or replaces the generator function for this stream.
+   * If stream has active listeners, restarts the generator immediately.
+   *
+   * @param streamOrFn - New generator function or stream to use as source
+   *
+   * @example
+   * ```typescript
+   * const stream = new Stream<number>();
+   * stream.listen(console.log);
+   *
+   * // Set source dynamically
+   * stream.setSource(source1);
+   *
+   * // Add source while preserving old one
+   * const oldSource = stream.getSource();
+   * if (oldSource) {
+   *   stream.setSource(source2.pipe(merge(oldSource)));
+   * }
+   * ```
+   */
+  setSource(): void;
+  setSource(stream: Stream<VALUE>): void;
+  setSource(fn: Stream.FunctionGenerator<VALUE>): void;
+  setSource(streamOrFn?: Stream<VALUE> | Stream.FunctionGenerator<VALUE>): void {
+    this._generator?.return();
+    this._generator = undefined;
+
+    // Set new generator function (or clear it)
+    this._functionGenerator = streamOrFn
+      ? streamOrFn instanceof Stream
+        ? () => streamOrFn[Symbol.asyncIterator]()
+        : streamOrFn
+      : undefined;
+
+    this._events?.push({ type: "source-changed", source: this.getSource() });
+    // Restart generator if we have listeners
+    if (this.hasListeners) {
+      this._startGenerator();
     }
   }
   /**
@@ -450,7 +488,9 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     return output as never;
   }
   [Symbol.dispose](): void {
-    this.clear();
+    this.removeListeners();
+    this._events?.removeListeners();
+    this._events = undefined;
   }
   /**
    * Removes all listeners from the stream.
@@ -467,16 +507,14 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * console.log(stream.hasListeners); // false
    * ```
    */
-  clear() {
+  removeListeners() {
     this._listeners.clear();
-    this._listenerAdded?.clear();
-    this._listenerRemoved?.clear();
-    this._listenerAdded = undefined;
-    this._listenerRemoved = undefined;
+    this._events?.push({ type: "listeners-removed" });
   }
+
   protected static _config: Stream.Config = {
     workerPoolSize: 4,
-    autoBind: true,
+    autoBind: false,
   };
   /**
    * Configure global Stream behavior.
@@ -539,7 +577,18 @@ export namespace Stream {
       this.abort();
       super[Symbol.dispose]();
     }
+    static abort(controllers: Controller[]) {
+      controllers.forEach((controller) => controller.abort());
+    }
   }
+  export type Events<VALUE> =
+    | { type: "listener-added" }
+    | { type: "listener-removed" }
+    | { type: "first-listener-added" }
+    | { type: "last-listener-removed" }
+    | { type: "source-changed"; source?: Stream<VALUE> }
+    | { type: "listeners-removed" };
+
   /**
    * Extracts the value type from a Stream type.
    *
