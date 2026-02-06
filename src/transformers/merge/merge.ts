@@ -7,18 +7,14 @@ export function merge<VALUE, STREAMS extends [Stream<any>, ...Stream<any>[]]>(
     new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>(async function* () {
       const output = new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>();
 
-      const cleanups = [stream, ...streams].map((s) =>
+      const ctrls = [stream, ...streams].map((s) =>
         s.listen((value) => {
           output.push(value);
         }),
       );
 
-      try {
-        for await (const value of output) {
-          yield value;
-        }
-      } finally {
-        cleanups.forEach((cleanup) => cleanup());
-      }
+      yield* output;
+
+      Stream.Controller.abort(ctrls);
     });
 }

@@ -106,7 +106,7 @@
  *
  * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(scan((a, b) => a + b, 0))
  */
-export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
+export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
   protected _listeners: Map<
     (value: VALUE) => void,
     { weakRef: WeakRef<object>; controller: Stream.Controller } | undefined
@@ -416,10 +416,10 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
    * }
    * ```
    */
-  setSource(): void;
-  setSource(stream: Stream<VALUE>): void;
-  setSource(fn: Stream.FunctionGenerator<VALUE>): void;
-  setSource(streamOrFn?: Stream<VALUE> | Stream.FunctionGenerator<VALUE>): void {
+  setSource(): this;
+  setSource(stream: Stream<VALUE>): this;
+  setSource(fn: Stream.FunctionGenerator<VALUE>): this;
+  setSource(streamOrFn?: Stream<VALUE> | Stream.FunctionGenerator<VALUE>): this {
     this._generator?.return();
     this._generator = undefined;
 
@@ -435,6 +435,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
     if (this.hasListeners) {
       this._startGenerator();
     }
+    return this;
   }
   /**
    * Promise-like interface that resolves with the next value.
@@ -558,6 +559,7 @@ export class Stream<VALUE = unknown> implements AsyncIterable<VALUE> {
 export namespace Stream {
   export class Controller extends Stream<void> {
     protected _aborted = false;
+    protected _signals = new Set<AbortSignal | Stream<any> | object>();
 
     constructor(private cleanup: () => void) {
       super();
@@ -566,11 +568,24 @@ export namespace Stream {
     get aborted() {
       return this._aborted;
     }
+    get signals() {
+      return [...this._signals];
+    }
     abort(): void {
       if (this._aborted) return;
       this._aborted = true;
-      this.push(); // Notify observers
+      this._signals.clear();
+      this.push();
       this.cleanup();
+    }
+    addSignal(signal: Stream<any>) {
+      signal.then(() => {
+        if (this._signals.has(signal)) this.abort();
+      });
+      this._signals.add(signal);
+    }
+    removeSignal(signal: AbortSignal | Stream<any> | object) {
+      this._signals.delete(signal);
     }
 
     [Symbol.dispose](): void {
@@ -580,6 +595,10 @@ export namespace Stream {
     static abort(controllers: Controller[]) {
       controllers.forEach((controller) => controller.abort());
     }
+    static ABORTED = Symbol("aborted");
+  }
+  export namespace Controller {
+    export type Aborted = typeof Controller.ABORTED;
   }
   export type Events<VALUE> =
     | { type: "listener-added" }
@@ -613,7 +632,7 @@ export namespace Stream {
    * });
    * ```
    */
-  export type FunctionGenerator<VALUE> = () => AsyncGenerator<VALUE, void>;
+  export type FunctionGenerator<VALUE> = (this: Stream<VALUE>) => AsyncGenerator<VALUE, void>;
 
   /**
    * Function that transforms one stream into another.

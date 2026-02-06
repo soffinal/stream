@@ -26,12 +26,6 @@ export function branch<T>(target: Stream<T>): Stream.Transformer<Stream<T>> {
     const oldSource = target.getSource();
     target.setSource(oldSource ? source.pipe(merge(oldSource)) : source);
 
-    return new Stream<T>(async function* () {
-      try {
-        yield* source;
-      } finally {
-        return;
-      }
-    });
+    return new Stream<T>(source);
   };
 }
