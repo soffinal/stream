@@ -1,20 +1,11 @@
 import { Stream } from "../../stream.ts";
 
-export function merge<VALUE, STREAMS extends [Stream<any>, ...Stream<any>[]]>(
-  ...streams: STREAMS
-): Stream.Transformer<Stream<VALUE>, Stream<VALUE | Stream.ValueOf<STREAMS[number]>>> {
-  return (stream: Stream<VALUE>): Stream<VALUE | Stream.ValueOf<STREAMS[number]>> =>
-    new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>(async function* () {
-      const output = new Stream<VALUE | Stream.ValueOf<STREAMS[number]>>();
-
-      const ctrls = [stream, ...streams].map((s) =>
-        s.listen((value) => {
-          output.push(value);
-        }),
-      );
-
-      yield* output;
-
-      Stream.Controller.abort(ctrls);
+export function merge<VALUE, STREAM extends Stream<any>>(
+  other: STREAM,
+): Stream.Transformer<Stream<VALUE>, Stream<VALUE | Stream.ValueOf<STREAM>>> {
+  return (source) =>
+    new Stream<VALUE | Stream.ValueOf<STREAM>>((self) => {
+      const controller = other.listen((value) => self.push(value));
+      return source.listen((value) => self.push(value)).addCleanup(() => controller.abort());
     });
 }

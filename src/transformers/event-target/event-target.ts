@@ -27,15 +27,13 @@ export function eventTarget<VALUE, E extends Event = Event>(
   eventType: string,
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE | E>> {
   return function (source) {
-    return new Stream<VALUE | E>(async function* (this) {
-      const listener = (e: Event) => this.push(e as E);
-
+    return new Stream<VALUE | E>((self) => {
       target.addEventListener(eventType, listener);
 
-      try {
-        yield* source;
-      } finally {
-        target.removeEventListener(eventType, listener);
+      return source.listen((v) => self.push(v)).addCleanup(() => target.removeEventListener(eventType, listener));
+
+      function listener(e: Event) {
+        self.push(e as E);
       }
     });
   };

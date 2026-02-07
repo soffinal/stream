@@ -8,31 +8,25 @@ import { Stream } from "../../stream";
  * stream1.pipe(combineLatest(stream2))
  * ```
  */
-export const combineLatest =
-  <T, STREAMS extends [Stream<any>, ...Stream<any>[]]>(...streams: STREAMS) =>
-  (source: Stream<T>) => {
-    return new Stream(async function* () {
-      const latest: any[] = new Array(streams.length + 1);
+export function combineLatest<VALUE, STREAMS extends [Stream<any>, ...Stream<any>[]]>(
+  ...streams: STREAMS
+): Stream.Transformer<Stream<VALUE>, Stream<[VALUE, ...{ [K in keyof STREAMS]: Stream.ValueOf<STREAMS[K]> }]>> {
+  return function (source) {
+    return new Stream((self) => {
+      const latest = new Array(streams.length + 1) as [VALUE, ...{ [K in keyof STREAMS]: Stream.ValueOf<STREAMS[K]> }];
       const hasValue: boolean[] = new Array(streams.length + 1).fill(false);
-      const output = new Stream<any>();
 
-      const cleanups = [source, ...streams].map((stream, i) =>
+      const controllers = [source, ...streams].map((stream, i) =>
         stream.listen((value) => {
           latest[i] = value;
           hasValue[i] = true;
           if (hasValue.every(Boolean)) {
-            output.push([...latest]);
+            self.push([...latest]);
           }
         }),
       );
 
-      try {
-        for await (const value of output) {
-          yield value;
-        }
-      } finally {
-        // cleanup0();
-        cleanups.forEach((c) => c());
-      }
+      return new Stream.Controller(() => controllers.forEach((controller) => controller.abort()));
     });
   };
+}

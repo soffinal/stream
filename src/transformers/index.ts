@@ -6,7 +6,7 @@ export * from "./gate";
 export * from "./zip/zip";
 export * from "./buffer";
 export * from "./cache";
-export * from "./branch";
+export * from "./sample";
 export * from "./effect";
 export * from "./sequential-worker";
 export * from "./statefull-worker";

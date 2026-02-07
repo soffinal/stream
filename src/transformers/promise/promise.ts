@@ -20,13 +20,13 @@ export function promise<VALUE, U>(
   p: Promise<U>,
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE | promise.PromiseResult<U>>> {
   return function (source) {
-    return new Stream<VALUE | promise.PromiseResult<U>>(async function* (this) {
+    return new Stream<VALUE | promise.PromiseResult<U>>((self) => {
       p.then(
-        (value) => this.push({ status: "fulfilled", value }),
-        (reason) => this.push({ status: "rejected", reason }),
+        (value) => self.push({ status: "fulfilled", value }),
+        (reason) => self.push({ status: "rejected", reason }),
       );
 
-      yield* source;
+      return source.listen((v) => self.push(v));
     });
   };
 }

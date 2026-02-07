@@ -4,24 +4,34 @@ export function concurrentOrdered<VALUE, MAPPED>(
   mapper: concurrentOrdered.Mapper<VALUE, MAPPED>,
 ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>> {
   return (stream) => {
-    return new Stream<MAPPED>(async function* () {
-      const output = new Stream<MAPPED | Promise<MAPPED>>();
-      const ctr = stream.listen(async (value) => {
-        output.push(Promise.resolve().then(() => mapper(value)));
-      });
+    return new Stream<MAPPED>((self) => {
+      const queue: Promise<MAPPED>[] = [];
+      let processing = false;
 
-      try {
-        for await (const mapped of output) {
-          yield mapped;
+      return stream
+        .listen(async (value, controller) => {
+          queue.push(mapper(value, controller));
+          startProcessing(controller);
+        })
+        .addCleanup(() => {
+          queue.length = 0;
+        });
+
+      async function startProcessing(controller: Stream.Controller) {
+        if (processing) return;
+        processing = true;
+
+        while (queue.length && !controller.aborted) {
+          const result = await queue.shift()!;
+          if (controller.aborted) return;
+          self.push(result);
         }
-      } finally {
-        ctr.abort();
-        return;
+        processing = false;
       }
     });
   };
 }
 
 export namespace concurrentOrdered {
-  export type Mapper<VALUE, MAPPED> = (value: VALUE) => MAPPED | Promise<MAPPED>;
+  export type Mapper<VALUE, MAPPED> = (value: VALUE, controller: Stream.Controller) => Promise<MAPPED>;
 }
