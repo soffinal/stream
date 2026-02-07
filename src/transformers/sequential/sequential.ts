@@ -4,14 +4,15 @@ export function sequential<VALUE, MAPPED>(
   mapper: sequential.Mapper<VALUE, MAPPED>,
 ): Stream.Transformer<Stream<VALUE>, Stream<MAPPED>> {
   return (source) =>
-    new Stream<MAPPED>(async function* () {
-      try {
-        for await (const value of source) {
-          yield await mapper(value);
+    new Stream<MAPPED>((self) => {
+      return source.listen((value) => {
+        const mapped = mapper(value);
+        if (mapped instanceof Promise) {
+          mapped.then(self.push.bind(self));
+        } else {
+          self.push(mapped);
         }
-      } finally {
-        return;
-      }
+      });
     });
 }
 

@@ -107,9 +107,10 @@
  * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(scan((a, b) => a + b, 0))
  */
 export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
-  protected _listeners: Array<(value: VALUE) => void> = [];
-  protected _source: Stream.Source<VALUE> | undefined;
-  protected _abortSource: Stream.Abort | undefined;
+  protected _listeners: Set<(value: VALUE) => void> = new Set();
+  protected _functionGenerator: Stream.FunctionGenerator<VALUE> | undefined;
+  protected _generator: AsyncGenerator<VALUE, void> | undefined;
+  protected _sourceFunction: Stream.SourceFunction<VALUE> | undefined;
   protected _events: Stream<Stream.Events<VALUE>> | undefined;
 
   /**
@@ -147,9 +148,10 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   constructor();
-  constructor(source: Stream.Source<VALUE>);
-  constructor(source?: Stream.Source<VALUE>) {
-    this.setSource(source as Stream.Source<VALUE>);
+  constructor(stream: Stream<VALUE>);
+  constructor(fn: Stream.FunctionGenerator<VALUE>);
+  constructor(streamOrFn?: Stream.FunctionGenerator<VALUE> | Stream<VALUE>) {
+    if (streamOrFn) this.setSource(streamOrFn as never);
 
     if (Stream._config.autoBind) {
       this.push = this.push.bind(this);
@@ -180,10 +182,10 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   get hasListeners(): boolean {
-    return this._listeners.length > 0;
+    return this._listeners.size > 0;
   }
   get listenersCount(): number {
-    return this._listeners.length;
+    return this._listeners.size;
   }
   get events(): Stream<Stream.Events<VALUE>> {
     if (!this._events) this._events = new Stream();
@@ -193,7 +195,7 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
     const queue: VALUE[] = [];
     let resolver: Function | undefined;
 
-    const abort = this.listen((value) => {
+    const controller = this.listen((value) => {
       queue.push(value);
       resolver?.();
     });
@@ -204,7 +206,7 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
         else await new Promise<void>((r) => (resolver = r));
       }
     } finally {
-      abort();
+      controller.push();
       queue.length = 0;
       resolver = undefined;
       return;
@@ -232,8 +234,8 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
     values.unshift(value);
 
     for (const value of values) {
-      for (let i = 0; i < this._listeners.length; i++) {
-        this._listeners[i](value);
+      for (const listener of this._listeners) {
+        listener(value);
       }
     }
   }
@@ -310,35 +312,37 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
 
-  listen(listener: (value: VALUE) => void): Stream.Abort {
-    if (Stream._config.asyncPushs) {
-      this._listeners.push((v) => queueMicrotask(() => listener(v)));
-    } else {
-      this._listeners.push(listener);
-    }
+  listen(listener: (value: VALUE) => void): Stream<void> {
+    this._listeners.add(listener);
 
     this._events?.push({ type: "listener-added" });
 
-    if (this._listeners.length === 1) {
+    if (this._listeners.size === 1) {
       this._events?.push({ type: "first-listener-added" });
-      this._abortSource = this._source?.(this);
+      this._startGenerator();
     }
+    const abort = new Stream<void>();
 
-    const abortListener = () => {
-      const index = this._listeners.indexOf(listener);
-      if (index !== -1) {
-        this._listeners.splice(index, 1);
-      }
+    abort._listeners.add(() => {
+      this._listeners.delete(listener);
       this._events?.push({ type: "listener-removed" });
-      if (this._listeners.length === 0) {
+      if (this._listeners.size === 0) {
+        this._generator?.return();
+        this._generator = undefined;
         this._events?.push({ type: "last-listener-removed" });
-        this._abortSource?.();
       }
-    };
+    });
 
-    return abortListener;
+    return abort;
   }
+  protected _startGenerator(): void {
+    if (!this._functionGenerator || this._generator || !this.hasListeners) return;
 
+    this._generator = this._functionGenerator();
+    (async () => {
+      for await (const value of this._generator!) this.push(value);
+    })();
+  }
   /**
    * Gets the current source generator function.
    * Returns a new Stream that wraps the generator for composition.
@@ -357,8 +361,8 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * }
    * ```
    */
-  getSource(): Stream.Source<VALUE> | undefined {
-    return this._source;
+  getSource(): Stream<VALUE> | undefined {
+    return this._functionGenerator ? new Stream(this._functionGenerator) : undefined;
   }
 
   /**
@@ -383,17 +387,24 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   setSource(): this;
-  setSource(source: Stream.Source<VALUE>): this;
-  setSource(source?: Stream.Source<VALUE>): this {
-    this._source = undefined;
-    this._abortSource?.();
+  setSource(stream: Stream<VALUE>): this;
+  setSource(fn: Stream.FunctionGenerator<VALUE>): this;
+  setSource(streamOrFn?: Stream<VALUE> | Stream.FunctionGenerator<VALUE>): this {
+    this._generator?.return();
+    this._generator = undefined;
 
-    this._source = source;
+    // Set new generator function (or clear it)
+    this._functionGenerator = streamOrFn
+      ? streamOrFn instanceof Stream
+        ? () => streamOrFn[Symbol.asyncIterator]()
+        : streamOrFn
+      : undefined;
 
     this._events?.push({ type: "source-changed", source: this.getSource() });
-
-    if (this.hasListeners && this._source) this._abortSource = this._source(this);
-
+    // Restart generator if we have listeners
+    if (this.hasListeners) {
+      this._startGenerator();
+    }
     return this;
   }
 
@@ -420,9 +431,9 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    */
   then(onfulfilled?: ((value: VALUE) => VALUE | PromiseLike<VALUE>) | null): Promise<VALUE> {
     return new Promise<VALUE>((resolve) => {
-      const abort = this.listen((value) => {
+      const controller = this.listen((value) => {
         resolve(value);
-        abort();
+        controller.push();
       });
     }).then(onfulfilled);
   }
@@ -469,14 +480,13 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   removeListeners() {
-    this._listeners.length = 0;
+    this._listeners.clear();
     this._events?.push({ type: "listeners-removed" });
   }
 
   protected static _config: Stream.Config = {
     workerPoolSize: 4,
     autoBind: false,
-    asyncPushs: false,
   };
   /**
    * Configure global Stream behavior.
@@ -518,56 +528,12 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
 }
 
 export namespace Stream {
-  export class Controller extends Stream<void> {
-    protected _aborted = false;
-    protected _signals = new Set<Stream<any>>();
-
-    constructor(protected cleanup?: Controller.Cleanup) {
-      super();
-      this.abort = this.abort.bind(this);
-    }
-    get aborted() {
-      return this._aborted;
-    }
-    get signals() {
-      return [...this._signals];
-    }
-    abort(): void {
-      if (this._aborted) return;
-      this._aborted = true;
-      this._signals.clear();
-      this.push();
-      this.cleanup?.();
-    }
-    addSignal(signal: Stream<any>) {
-      signal.then(() => {
-        if (this._signals.has(signal)) this.abort();
-      });
-      this._signals.add(signal);
-    }
-    removeSignal(signal: Stream<any>) {
-      this._signals.delete(signal);
-    }
-
-    [Symbol.dispose](): void {
-      this.abort();
-      super[Symbol.dispose]();
-    }
-    static abort(controllers: Controller[]) {
-      controllers.forEach((controller) => controller.abort());
-    }
-    static ABORTED = Symbol("aborted");
-  }
-  export namespace Controller {
-    export type Cleanup = () => void;
-    export type Aborted = typeof Controller.ABORTED;
-  }
   export type Events<VALUE> =
     | { type: "listener-added" }
     | { type: "listener-removed" }
     | { type: "first-listener-added" }
     | { type: "last-listener-removed" }
-    | { type: "source-changed"; source?: Stream.Source<VALUE> }
+    | { type: "source-changed"; source?: Stream<VALUE> }
     | { type: "listeners-removed" };
 
   /**
@@ -580,8 +546,23 @@ export namespace Stream {
    * ```
    */
   export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-  export type Abort = () => void;
-  export type Source<VALUE> = (self: Stream<VALUE>) => Abort;
+  /**
+   * Function that returns an async generator to produce stream values.
+   * Used for iteration-based transformers.
+   *
+   * @example
+   * ```typescript
+   * const countdown = new Stream(async function* () {
+   *   for (let i = 5; i > 0; i--) {
+   *     yield i;
+   *     await new Promise(resolve => setTimeout(resolve, 1000));
+   *   }
+   * });
+   * ```
+   */
+  export type FunctionGenerator<VALUE> = (this: Stream<VALUE>) => AsyncGenerator<VALUE, void>;
+  export type SourceFunction<VALUE> = (this: Stream<VALUE>) => void;
+
   /**
    * Function that transforms one stream into another.
    *
@@ -621,7 +602,6 @@ export namespace Stream {
      * @default true
      */
     autoBind: boolean;
-    asyncPushs: boolean;
   }
 }
 

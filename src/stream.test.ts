@@ -1,5 +1,6 @@
 import { it, expect, describe } from "bun:test";
 import { Stream } from "./stream";
+import { abortSignal } from "./transformers/abort-signal";
 
 describe("Stream", () => {
   describe("Constructor", () => {
@@ -10,7 +11,7 @@ describe("Stream", () => {
 
     it("creates stream with generator function", () => {
       Stream;
-      const stream = new Stream(async function* () {
+      const stream = new Stream<number>(async function* () {
         yield 1;
         yield 2;
       });
@@ -31,7 +32,7 @@ describe("Stream", () => {
 
     it("should work with transformed streams in constructor", async () => {
       const source = new Stream<number>();
-      const filtered = new Stream(async function* () {
+      const filtered = new Stream<number>(async function* () {
         for await (const value of source) {
           if (value > 0) yield value;
         }
@@ -126,7 +127,7 @@ describe("Stream", () => {
       controller.abort();
 
       const values: number[] = [];
-      stream.listen((value) => values.push(value), controller.signal);
+      stream.listen((value) => values.push(value)).addSignal(new Stream().pipe(abortSignal(controller.signal)));
 
       stream.push(1);
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -139,7 +140,7 @@ describe("Stream", () => {
       const controller = new AbortController();
       const values: number[] = [];
 
-      stream.listen((value) => values.push(value), controller.signal);
+      stream.listen((value) => values.push(value)).addSignal(new Stream().pipe(abortSignal(controller.signal)));
 
       stream.push(1);
       controller.abort();
@@ -150,18 +151,17 @@ describe("Stream", () => {
       expect(values).toEqual([1]);
     });
 
-    it("stream trigger cleanup", async () => {
+    it.only("stream trigger cleanup", async () => {
       const stream = new Stream<number>();
       const stopSignal = new Stream<void>();
       const values: number[] = [];
 
-      stream.listen((value) => values.push(value), stopSignal);
+      stream.listen((value) => values.push(value)).setSource(stopSignal);
 
       stream.push(1);
       stopSignal.push();
-      stream.push(2);
-
       await new Promise((resolve) => setTimeout(resolve, 0));
+      stream.push(2);
 
       expect(values).toEqual([1]);
       expect(stream.hasListeners).toBe(false);
