@@ -1,6 +1,5 @@
 import { Stream } from "../../stream";
 
-let counter = 0n;
 /**
  * Emits ABORTED when object is garbage collected.
  * Useful for automatic cleanup based on object lifetime.
@@ -23,20 +22,28 @@ let counter = 0n;
 export function weakRef<VALUE>(
   object: object,
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE | Stream.Controller.Aborted>> {
+  const ref = new WeakRef(object);
+  const unregisterToken = {};
   return function (source) {
-    return new Stream<VALUE | Stream.Controller.Aborted>(async function* (this) {
-      const ref = new WeakRef(object);
-
+    return new Stream<VALUE | Stream.Controller.Aborted>((self) => {
       if (!ref.deref()) {
-        this.push(Stream.Controller.ABORTED);
+        self.push(Stream.Controller.ABORTED);
         return;
       }
-      const id = counter++;
-      const registry = new FinalizationRegistry((heldValue) => {
-        if (heldValue === id) this.push(Stream.Controller.ABORTED);
+
+      const registry = new FinalizationRegistry(() => {
+        self.push(Stream.Controller.ABORTED);
       });
-      registry.register(object, id, object);
-      yield* source;
+
+      const target = ref.deref();
+      if (!target) {
+        self.push(Stream.Controller.ABORTED);
+        return;
+      }
+
+      registry.register(target, undefined, unregisterToken);
+
+      return source.listen((v) => self.push(v)).addCleanup(() => registry.unregister(unregisterToken));
     });
   };
 }

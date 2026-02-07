@@ -3,17 +3,13 @@ import { Stream } from "../../stream";
 export function abortSignal<VALUE>(
   signal: AbortSignal,
 ): Stream.Transformer<Stream<VALUE>, Stream<VALUE | Stream.Controller.Aborted>> {
-  return function (stream) {
-    const out = new Stream<VALUE | Stream.Controller.Aborted>(async function* () {
-      if (signal.aborted) {
-        out.push(Stream.Controller.ABORTED);
-        return;
-      }
+  return function (source) {
+    return new Stream<VALUE | Stream.Controller.Aborted>((self) => {
+      if (signal.aborted) self.push(Stream.Controller.ABORTED);
 
-      signal.addEventListener("abort", () => out.push(Stream.Controller.ABORTED), { once: true });
-      yield* stream;
+      signal.addEventListener("abort", () => self.push(Stream.Controller.ABORTED), { once: true });
+
+      return source.listen((value) => self.push(value));
     });
-
-    return out;
   };
 }

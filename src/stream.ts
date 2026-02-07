@@ -107,9 +107,9 @@
  * // Usage: stream.pipe(filter(x => x > 0)).pipe(take(5)).pipe(scan((a, b) => a + b, 0))
  */
 export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
-  protected _listeners: Array<(value: VALUE) => void> = [];
+  protected _listeners: Array<(value: VALUE) => void> | undefined;
   protected _source: Stream.Source<VALUE> | undefined;
-  protected _abortSource: Stream.Abort | undefined;
+  protected _sourceController: Stream.Controller | undefined;
   protected _events: Stream<Stream.Events<VALUE>> | undefined;
 
   /**
@@ -180,10 +180,10 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   get hasListeners(): boolean {
-    return this._listeners.length > 0;
+    return this._listeners ? this._listeners.length > 0 : false;
   }
   get listenersCount(): number {
-    return this._listeners.length;
+    return this._listeners?.length ?? 0;
   }
   get events(): Stream<Stream.Events<VALUE>> {
     if (!this._events) this._events = new Stream();
@@ -193,7 +193,7 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
     const queue: VALUE[] = [];
     let resolver: Function | undefined;
 
-    const abort = this.listen((value) => {
+    const controller = this.listen((value) => {
       queue.push(value);
       resolver?.();
     });
@@ -204,7 +204,7 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
         else await new Promise<void>((r) => (resolver = r));
       }
     } finally {
-      abort();
+      controller.abort();
       queue.length = 0;
       resolver = undefined;
       return;
@@ -232,8 +232,8 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
     values.unshift(value);
 
     for (const value of values) {
-      for (let i = 0; i < this._listeners.length; i++) {
-        this._listeners[i](value);
+      for (let i = 0; i < this.listenersCount; i++) {
+        this._listeners?.[i](value);
       }
     }
   }
@@ -310,33 +310,38 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
 
-  listen(listener: (value: VALUE) => void): Stream.Abort {
+  listen(listener: (value: VALUE, controller: Stream.Controller) => void): Stream.Controller {
+    this._listeners = this._listeners ?? [];
+
+    const controller = new Stream.Controller(() => {
+      const index = this._listeners?.indexOf(_listener) ?? 0;
+      if (index !== -1) {
+        this._listeners?.splice(index, 1);
+      }
+      this._events?.push({ type: "listener-removed" });
+      if (this.listenersCount === 0) {
+        this._listeners = undefined;
+        this._events?.push({ type: "last-listener-removed" });
+        this._sourceController?.abort();
+      }
+    });
+
+    const _listener = (v: VALUE) => listener(v, controller);
+
     if (Stream._config.asyncPushs) {
-      this._listeners.push((v) => queueMicrotask(() => listener(v)));
+      this._listeners.push((v) => queueMicrotask(() => _listener(v)));
     } else {
-      this._listeners.push(listener);
+      this._listeners.push(_listener);
     }
 
     this._events?.push({ type: "listener-added" });
 
-    if (this._listeners.length === 1) {
+    if (this.listenersCount === 1) {
       this._events?.push({ type: "first-listener-added" });
-      this._abortSource = this._source?.(this);
+      this._sourceController = this._source?.(this) ?? undefined;
     }
 
-    const abortListener = () => {
-      const index = this._listeners.indexOf(listener);
-      if (index !== -1) {
-        this._listeners.splice(index, 1);
-      }
-      this._events?.push({ type: "listener-removed" });
-      if (this._listeners.length === 0) {
-        this._events?.push({ type: "last-listener-removed" });
-        this._abortSource?.();
-      }
-    };
-
-    return abortListener;
+    return controller;
   }
 
   /**
@@ -386,13 +391,13 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
   setSource(source: Stream.Source<VALUE>): this;
   setSource(source?: Stream.Source<VALUE>): this {
     this._source = undefined;
-    this._abortSource?.();
+    this._sourceController?.abort();
 
     this._source = source;
 
     this._events?.push({ type: "source-changed", source: this.getSource() });
 
-    if (this.hasListeners && this._source) this._abortSource = this._source(this);
+    if (this.hasListeners && this._source) this._sourceController = this._source(this) ?? undefined;
 
     return this;
   }
@@ -420,9 +425,9 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    */
   then(onfulfilled?: ((value: VALUE) => VALUE | PromiseLike<VALUE>) | null): Promise<VALUE> {
     return new Promise<VALUE>((resolve) => {
-      const abort = this.listen((value) => {
+      const controller = this.listen((value) => {
         resolve(value);
-        abort();
+        controller.abort();
       });
     }).then(onfulfilled);
   }
@@ -469,7 +474,7 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
    * ```
    */
   removeListeners() {
-    this._listeners.length = 0;
+    this._listeners = undefined;
     this._events?.push({ type: "listeners-removed" });
   }
 
@@ -520,33 +525,50 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
 export namespace Stream {
   export class Controller extends Stream<void> {
     protected _aborted = false;
-    protected _signals = new Set<Stream<any>>();
+    protected _signals: Set<Stream<any>> | undefined;
+    protected _cleanups: Set<Controller.Cleanup> | undefined;
 
-    constructor(protected cleanup?: Controller.Cleanup) {
+    constructor(cleanup?: Controller.Cleanup) {
       super();
-      this.abort = this.abort.bind(this);
+      if (cleanup) this.addCleanup(cleanup);
     }
     get aborted() {
       return this._aborted;
     }
     get signals() {
-      return [...this._signals];
+      return this._signals && [...this._signals];
     }
     abort(): void {
       if (this._aborted) return;
       this._aborted = true;
-      this._signals.clear();
+      this._signals = undefined;
+      this._cleanups?.forEach((cleanup) => cleanup());
+      this._cleanups = undefined;
       this.push();
-      this.cleanup?.();
+    }
+    addCleanup(cleanup: Controller.Cleanup) {
+      this._cleanups ? this._cleanups.add(cleanup) : (this._cleanups = new Set([cleanup]));
+      return this;
+    }
+    removeCleanup(cleanup: Controller.Cleanup) {
+      this._cleanups?.delete(cleanup);
+      if (!this._cleanups?.size) this._cleanups = undefined;
+      return this;
     }
     addSignal(signal: Stream<any>) {
-      signal.then(() => {
-        if (this._signals.has(signal)) this.abort();
+      this._signals ? this._signals.add(signal) : (this._signals = new Set([signal]));
+
+      signal.listen((_, controller) => {
+        if (this._signals?.has(signal)) this.abort();
+        controller.abort();
       });
-      this._signals.add(signal);
+      return this;
     }
     removeSignal(signal: Stream<any>) {
-      this._signals.delete(signal);
+      this._signals?.delete(signal);
+      if (!this._signals?.size) this._signals = undefined;
+
+      return this;
     }
 
     [Symbol.dispose](): void {
@@ -581,7 +603,7 @@ export namespace Stream {
    */
   export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
   export type Abort = () => void;
-  export type Source<VALUE> = (self: Stream<VALUE>) => Abort;
+  export type Source<VALUE> = (self: Stream<VALUE>) => Controller | void;
   /**
    * Function that transforms one stream into another.
    *
