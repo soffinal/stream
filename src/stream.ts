@@ -478,6 +478,23 @@ export class Stream<VALUE = never> implements AsyncIterable<VALUE> {
     this._events?.push({ type: "listeners-removed" });
   }
 
+  static create<VALUE, CAP extends Record<string, any>>(
+    source: Stream.Source<VALUE>,
+    getCapabilities: (self: Stream<VALUE>) => CAP,
+  ): Stream<VALUE> & CAP {
+    const output = new Stream<VALUE>(source as Stream.Source<VALUE>) as Stream<VALUE> & CAP;
+
+    const capabilities = getCapabilities(output);
+    for (const key of Object.keys(capabilities)) {
+      Object.defineProperty(output, key, {
+        value: capabilities[key],
+        enumerable: true,
+        configurable: false,
+      });
+    }
+
+    return output;
+  }
   protected static _config: Stream.Config = {
     workerPoolSize: 4,
     autoBind: false,
@@ -602,7 +619,7 @@ export namespace Stream {
    * ```
    */
   export type ValueOf<STREAM> = STREAM extends Stream<infer VALUE> ? VALUE : never;
-  export type Abort = () => void;
+
   export type Source<VALUE> = (self: Stream<VALUE>) => Controller | void;
   /**
    * Function that transforms one stream into another.

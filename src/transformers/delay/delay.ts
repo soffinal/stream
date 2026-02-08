@@ -8,12 +8,13 @@ import { Stream } from "../../stream";
  * stream.pipe(delay(1000))
  * ```
  */
-export const delay =
-  <T>(ms: number) =>
-  (source: Stream<T>) =>
-    new Stream<T>(async function* () {
-      for await (const value of source) {
+export function delay<VALUE>(ms: number): Stream.Transformer<Stream<VALUE>> {
+  return function (source) {
+    return new Stream((self) => {
+      return source.listen(async (value) => {
         await new Promise((resolve) => setTimeout(resolve, ms));
-        yield value;
-      }
+        self.push(value);
+      });
     });
+  };
+}

@@ -94,13 +94,13 @@ describe("combineLatest", () => {
     const combined = stream1.pipe(combineLatest(stream2));
 
     const results: Array<[number, string]> = [];
-    const abort = combined.listen((value) => results.push(value));
+    const controller = combined.listen((value) => results.push(value));
 
     stream1.push(1);
     stream2.push("a");
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    abort(); // Cleanup
+    controller.abort(); // Cleanup
 
     stream1.push(2);
     stream2.push("b");

@@ -1,7 +1,7 @@
 import { Stream } from "../../stream";
 import { filter } from "../filter";
-import { sequential } from "../sequential/sequential";
-import { statefull } from "../statefull/statefull";
+import { sequential, map } from "../sequential";
+import { statefull } from "../statefull";
 
 /**
  * Remove duplicate values (unbounded memory)
@@ -15,18 +15,16 @@ import { statefull } from "../statefull/statefull";
  * // [1, 2, 1, 3] → [1, 2, 3]
  * ```
  */
-export const distinct =
-  <T>(): Stream.Transformer<Stream<T>, Stream<T>> =>
-  (source) =>
-    source
-      .pipe(
-        statefull({ seen: new Set() }, (state, value) => {
-          if (state.seen.has(value)) return [[value, false as boolean], state] as const;
-          state.seen.add(value);
-          return [[value, true as boolean], state] as const;
-        }),
-      )
-      .pipe(filter((t) => t[1]))
-      .pipe(sequential((t) => t[0]));
-
-const s = new Stream<number>().pipe(distinct());
+export function distinct<VALUE>(): Stream.Transformer<Stream<VALUE>> {
+  return function (source) {
+    return new Stream((self) => {
+      const seen = new Set<VALUE>();
+      return source.listen((value) => {
+        if (!seen.has(value)) {
+          self.push(value);
+          seen.add(value);
+        }
+      });
+    });
+  };
+}

@@ -4,7 +4,7 @@ import { Stream } from "../../stream";
  * Adds flow control to a stream with `.gate.open()` and `.gate.close()` methods.
  * Gate starts open by default. Closed gate blocks all values.
  *
- * @template T - The type of values in the stream
+ * @template VALUE - The type of values in the stream
  * @returns Transformer that adds gate behavior
  *
  * @example
@@ -28,34 +28,33 @@ import { Stream } from "../../stream";
  * console.log(events.gate.isOpen); // false
  * ```
  */
-export function gate<T>(): Stream.Transformer<Stream<T>, Stream<T> & { gate: gate.Gate<T> }> {
+export function gate<VALUE>(): Stream.Transformer<Stream<VALUE>, Stream<VALUE> & { gate: gate.Gate }> {
   return (source) => {
     let isOpen = true;
 
-    const output = new Stream<T>(async function* () {
-      for await (const value of source) {
-        if (isOpen) yield value;
-      }
-    });
-
-    Object.defineProperty(output, "gate", {
-      value: {
-        open: () => (isOpen = true),
-        close: () => (isOpen = false),
-        get isOpen() {
-          return isOpen;
-        },
+    return Stream.create<VALUE, { gate: gate.Gate }>(
+      function (self) {
+        return source.listen((value) => {
+          if (isOpen) self.push(value);
+        });
       },
-      enumerable: true,
-      configurable: false,
-    });
-
-    return output as Stream<T> & { gate: gate.Gate<T> };
+      () => {
+        return {
+          gate: {
+            open: () => (isOpen = true),
+            close: () => (isOpen = false),
+            get isOpen() {
+              return isOpen;
+            },
+          },
+        };
+      },
+    );
   };
 }
 
 export namespace gate {
-  export type Gate<T> = {
+  export type Gate = {
     open(): void;
     close(): void;
     readonly isOpen: boolean;

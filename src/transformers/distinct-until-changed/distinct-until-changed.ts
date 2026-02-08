@@ -12,15 +12,17 @@ import { statefull } from "../statefull";
  * // [1, 1, 2, 2, 1] → [1, 2, 1]
  * ```
  */
-export const distinctUntilChanged =
-  <T>(): Stream.Transformer<Stream<T>, Stream<T>> =>
-  (source) =>
-    source
-      .pipe(
-        statefull({ prev: Symbol() as T }, (state, value) => {
-          if (state.prev === value) return [[value, false as boolean], state] as const;
-          return [[value, true as boolean], { prev: value }] as const;
-        }),
-      )
-      .pipe(filter((t) => t[1]))
-      .pipe(sequential((t) => t[0]));
+
+export function distinctUntilChanged<VALUE>(): Stream.Transformer<Stream<VALUE>> {
+  return function (source) {
+    return new Stream((self) => {
+      let prev = Symbol() as VALUE;
+
+      return source.listen((value) => {
+        if (prev === value) return;
+        prev = value;
+        self.push(value);
+      });
+    });
+  };
+}

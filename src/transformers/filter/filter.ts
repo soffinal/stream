@@ -3,15 +3,11 @@ import { Stream } from "../../stream.ts";
 export const filter: filter.Function = <VALUE, FILTERED extends VALUE = VALUE>(
   predicate: filter.Predicate<VALUE>,
 ): Stream.Transformer<Stream<VALUE>, Stream<FILTERED>> => {
-  return (stream) => {
-    return new Stream<FILTERED>(async function* () {
-      try {
-        for await (const value of stream) {
-          if (predicate(value)) yield value as FILTERED;
-        }
-      } finally {
-        return;
-      }
+  return (source) => {
+    return new Stream<FILTERED>(function (self) {
+      return source.listen((value) => {
+        if (predicate(value)) self.push(value as FILTERED);
+      });
     });
   };
 };

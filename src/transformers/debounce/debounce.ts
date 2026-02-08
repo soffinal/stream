@@ -8,24 +8,17 @@ import { Stream } from "../../stream";
  * stream.pipe(debounce(300))
  * ```
  */
-export const debounce =
-  <T>(ms: number): Stream.Transformer<Stream<T>, Stream<T>> =>
-  (source: Stream<T>) => {
-    return new Stream<T>(async function* () {
+export function debounce<VALUE>(ms: number): Stream.Transformer<Stream<VALUE>> {
+  return function (source) {
+    return new Stream((self) => {
       let timer: any = null;
 
-      const output = new Stream<T>();
-      const abort = source.listen((value) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => output.push(value), ms);
-      });
-
-      try {
-        for await (const value of output) {
-          yield value;
-        }
-      } finally {
-        abort();
-      }
+      return source
+        .listen((value) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => self.push(value), ms);
+        })
+        .addCleanup(() => clearTimeout(timer));
     });
   };
+}
